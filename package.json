@@ -1,0 +1,30 @@
+{
+  "name": "@gitkumi/prettier-plugin-handlebars",
+  "version": "0.1.0",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "prepublishOnly": "npm run build",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "peerDependencies": {
+    "prettier": "^3.0.0"
+  },
+  "dependencies": {
+    "handlebars": "^4.7.8"
+  },
+  "devDependencies": {
+    "prettier": "^3.5.3",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.2",
+    "vitest": "^3.1.1"
+  }
+}
