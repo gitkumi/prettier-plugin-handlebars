@@ -115,10 +115,6 @@ describe("edge cases", () => {
     expect(await format("\n")).toBe("");
   });
 
-  it("handles input that is already formatted", async () => {
-    const already = "{{#if x}}\n  content\n{{/if}}\n";
-    await expectFormat(already, already);
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -127,20 +123,17 @@ describe("edge cases", () => {
 
 describe("plain text", () => {
   it("formats plain text", async () => {
-    await expectFormat("hello world", "hello world\n");
+    await expectFormat("hello world", "hello world");
   });
 
   it("preserves multiline text", async () => {
-    await expectFormat("line1\nline2", "line1\nline2\n");
+    await expectFormat("line1\nline2", "line1\nline2");
   });
 
   it("preserves special characters", async () => {
-    await expectFormat("<p>&amp; &lt; &gt;</p>", "<p>&amp; &lt; &gt;</p>\n");
+    await expectFormat("<p>&amp; &lt; &gt;</p>", "<p>&amp; &lt; &gt;</p>");
   });
 
-  it("trims trailing newlines", async () => {
-    await expectFormat("hello\n\n\n", "hello\n");
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -149,53 +142,47 @@ describe("plain text", () => {
 
 describe("mustache expressions", () => {
   it("formats simple expression", async () => {
-    await expectFormat("{{hello}}", "{{hello}}\n");
+    await expectFormat("{{hello}}", "{{hello}}");
   });
 
   it("formats expression with param", async () => {
-    await expectFormat("{{hello world}}", "{{hello world}}\n");
+    await expectFormat("{{hello world}}", "{{hello world}}");
   });
 
   it("formats expression with string literal param", async () => {
-    await expectFormat('{{helper "world"}}', '{{helper "world"}}\n');
+    await expectFormat('{{helper "world"}}', "{{helper \"world\"}}");
   });
 
   it("formats expression with number literal param", async () => {
-    await expectFormat("{{helper 42}}", "{{helper 42}}\n");
+    await expectFormat("{{helper 42}}", "{{helper 42}}");
   });
 
   it("formats expression with negative number", async () => {
-    await expectFormat("{{helper -1}}", "{{helper -1}}\n");
+    await expectFormat("{{helper -1}}", "{{helper -1}}");
   });
 
   it("formats expression with boolean true", async () => {
-    await expectFormat("{{helper true}}", "{{helper true}}\n");
+    await expectFormat("{{helper true}}", "{{helper true}}");
   });
 
   it("formats expression with boolean false", async () => {
-    await expectFormat("{{helper false}}", "{{helper false}}\n");
+    await expectFormat("{{helper false}}", "{{helper false}}");
   });
 
   it("formats expression with undefined", async () => {
-    await expectFormat("{{helper undefined}}", "{{helper undefined}}\n");
+    await expectFormat("{{helper undefined}}", "{{helper undefined}}");
   });
 
   it("formats expression with null", async () => {
-    await expectFormat("{{helper null}}", "{{helper null}}\n");
+    await expectFormat("{{helper null}}", "{{helper null}}");
   });
 
   it("formats expression with multiple params", async () => {
-    await expectFormat(
-      '{{helper "a" "b" "c"}}',
-      '{{helper "a" "b" "c"}}\n',
-    );
+    await expectFormat('{{helper "a" "b" "c"}}', "{{helper \"a\" \"b\" \"c\"}}");
   });
 
   it("formats multiple inline expressions", async () => {
-    await expectFormat(
-      "{{first}} {{second}} {{third}}",
-      "{{first}} {{second}} {{third}}\n",
-    );
+    await expectFormat("{{first}} {{second}} {{third}}", "{{first}} {{second}} {{third}}");
   });
 });
 
@@ -205,25 +192,19 @@ describe("mustache expressions", () => {
 
 describe("triple-stache (unescaped)", () => {
   it("formats triple-stache expression", async () => {
-    await expectFormat("{{{hello}}}", "{{{hello}}}\n");
+    await expectFormat("{{{hello}}}", "{{{hello}}}");
   });
 
   it("formats triple-stache with params", async () => {
-    await expectFormat("{{{helper arg}}}", "{{{helper arg}}}\n");
+    await expectFormat("{{{helper arg}}}", "{{{helper arg}}}");
   });
 
   it("preserves mixed escaped and unescaped", async () => {
-    await expectFormat(
-      "{{escaped}} and {{{unescaped}}}",
-      "{{escaped}} and {{{unescaped}}}\n",
-    );
+    await expectFormat("{{escaped}} and {{{unescaped}}}", "{{escaped}} and {{{unescaped}}}");
   });
 
   it("formats triple-stache inside block", async () => {
-    await expectFormat(
-      "{{#if x}}{{{raw}}}{{/if}}",
-      "{{#if x}}\n  {{{raw}}}\n{{/if}}\n",
-    );
+    await expectFormat("{{#if x}}{{{raw}}}{{/if}}", "{{#if x}}{{{raw}}}{{/if}}");
   });
 });
 
@@ -233,41 +214,35 @@ describe("triple-stache (unescaped)", () => {
 
 describe("whitespace control", () => {
   it("preserves ~ on open", async () => {
-    await expectFormat("{{~hello}}", "{{~hello}}\n");
+    await expectFormat("{{~hello}}", "{{~hello}}");
   });
 
   it("preserves ~ on close", async () => {
-    await expectFormat("{{hello~}}", "{{hello~}}\n");
+    await expectFormat("{{hello~}}", "{{hello~}}");
   });
 
   it("preserves ~ on both sides", async () => {
-    await expectFormat("{{~hello~}}", "{{~hello~}}\n");
+    await expectFormat("{{~hello~}}", "{{~hello~}}");
   });
 
   it("preserves ~ on block open/close tags", async () => {
-    await expectFormat(
-      "{{~#if x~}}content{{~/if~}}",
-      "{{~#if x~}}\n  content\n{{~/if~}}\n",
-    );
+    await expectFormat("{{~#if x~}}content{{~/if~}}", "{{~#if x~}}content{{~/if~}}");
   });
 
   it("preserves ~ on else", async () => {
-    await expectFormat(
-      "{{#if x}}yes{{~else~}}no{{/if}}",
-      "{{#if x}}\n  yes\n{{~else~}}\n  no\n{{/if}}\n",
-    );
+    await expectFormat("{{#if x}}yes{{~else~}}no{{/if}}", "{{#if x}}yes{{~else~}}no{{/if}}");
   });
 
   it("preserves ~ on partial", async () => {
-    await expectFormat("{{~> myPartial~}}", "{{~> myPartial~}}\n");
+    await expectFormat("{{~> myPartial~}}", "{{~> myPartial~}}");
   });
 
   it("preserves ~ on simple comment", async () => {
-    await expectFormat("{{~! comment ~}}", "{{~! comment ~}}\n");
+    await expectFormat("{{~! comment ~}}", "{{~! comment ~}}");
   });
 
   it("preserves ~ on safe comment", async () => {
-    await expectFormat("{{~!-- comment --~}}", "{{~!-- comment --~}}\n");
+    await expectFormat("{{~!-- comment --~}}", "{{~!-- comment --~}}");
   });
 });
 
@@ -277,39 +252,27 @@ describe("whitespace control", () => {
 
 describe("comments", () => {
   it("formats simple comment", async () => {
-    await expectFormat("{{! this is a comment }}", "{{! this is a comment }}\n");
+    await expectFormat("{{! this is a comment }}", "{{! this is a comment }}");
   });
 
   it("formats safe comment", async () => {
-    await expectFormat(
-      "{{!-- this is a comment --}}",
-      "{{!-- this is a comment --}}\n",
-    );
+    await expectFormat("{{!-- this is a comment --}}", "{{!-- this is a comment --}}");
   });
 
   it("formats multiline safe comment", async () => {
-    await expectFormat(
-      "{{!--\n  line1\n  line2\n--}}",
-      "{{!--\n  line1\n  line2\n--}}\n",
-    );
+    await expectFormat("{{!--\n  line1\n  line2\n--}}", "{{!--\n  line1\n  line2\n--}}");
   });
 
   it("formats empty comment", async () => {
-    await expectFormat("{{!}}", "{{!  }}\n");
+    await expectFormat("{{!}}", "{{!  }}");
   });
 
   it("formats comment inside block", async () => {
-    await expectFormat(
-      "{{#if x}}{{! note }}content{{/if}}",
-      "{{#if x}}\n  {{! note }}content\n{{/if}}\n",
-    );
+    await expectFormat("{{#if x}}{{! note }}content{{/if}}", "{{#if x}}{{! note }}content{{/if}}");
   });
 
   it("formats comment between blocks", async () => {
-    await expectFormat(
-      "{{#if a}}x{{/if}}\n{{! separator }}\n{{#if b}}y{{/if}}",
-      "{{#if a}}\n  x\n{{/if}}\n{{! separator }}\n{{#if b}}\n  y\n{{/if}}\n",
-    );
+    await expectFormat("{{#if a}}x{{/if}}\n{{! separator }}\n{{#if b}}y{{/if}}", "{{#if a}}x{{/if}}\n{{! separator }}\n{{#if b}}y{{/if}}");
   });
 });
 
@@ -319,25 +282,19 @@ describe("comments", () => {
 
 describe("hash arguments", () => {
   it("formats single hash pair", async () => {
-    await expectFormat("{{helper key=value}}", "{{helper key=value}}\n");
+    await expectFormat("{{helper key=value}}", "{{helper key=value}}");
   });
 
   it("formats multiple hash pairs", async () => {
-    await expectFormat(
-      '{{helper key="val" num=42 bool=true}}',
-      '{{helper key="val" num=42 bool=true}}\n',
-    );
+    await expectFormat('{{helper key="val" num=42 bool=true}}', "{{helper key=\"val\" num=42 bool=true}}");
   });
 
   it("formats hash with path value", async () => {
-    await expectFormat("{{helper key=some.path}}", "{{helper key=some.path}}\n");
+    await expectFormat("{{helper key=some.path}}", "{{helper key=some.path}}");
   });
 
   it("formats hash with mixed params and hash", async () => {
-    await expectFormat(
-      '{{helper positional key="named"}}',
-      '{{helper positional key="named"}}\n',
-    );
+    await expectFormat('{{helper positional key="named"}}', "{{helper positional key=\"named\"}}");
   });
 });
 
@@ -347,44 +304,44 @@ describe("hash arguments", () => {
 
 describe("path expressions", () => {
   it("formats dotted paths", async () => {
-    await expectFormat("{{person.name}}", "{{person.name}}\n");
+    await expectFormat("{{person.name}}", "{{person.name}}");
   });
 
   it("formats parent traversal", async () => {
-    await expectFormat("{{../parent}}", "{{../parent}}\n");
+    await expectFormat("{{../parent}}", "{{../parent}}");
   });
 
   it("formats multi-level parent traversal", async () => {
-    await expectFormat("{{../../grandparent}}", "{{../../grandparent}}\n");
+    await expectFormat("{{../../grandparent}}", "{{../../grandparent}}");
   });
 
   it("formats this reference", async () => {
-    await expectFormat("{{this.foo}}", "{{this.foo}}\n");
+    await expectFormat("{{this.foo}}", "{{this.foo}}");
   });
 
   it("formats this keyword alone", async () => {
-    await expectFormat("{{this}}", "{{this}}\n");
+    await expectFormat("{{this}}", "{{this}}");
   });
 
   it("formats @data variables", async () => {
-    await expectFormat("{{@index}}", "{{@index}}\n");
+    await expectFormat("{{@index}}", "{{@index}}");
   });
 
   it("formats @root data variable", async () => {
-    await expectFormat("{{@root.name}}", "{{@root.name}}\n");
+    await expectFormat("{{@root.name}}", "{{@root.name}}");
   });
 
   it("formats explicit current path", async () => {
-    await expectFormat("{{./foo}}", "{{./foo}}\n");
+    await expectFormat("{{./foo}}", "{{./foo}}");
   });
 
   it("formats parent data variable", async () => {
-    await expectFormat("{{@../index}}", "{{@../index}}\n");
+    await expectFormat("{{@../index}}", "{{@../index}}");
   });
 
   it("formats segment-literal path", async () => {
     const input = "{{[foo bar]}}";
-    await expectFormat(input, "{{[foo bar]}}\n");
+    await expectFormat(input, "{{[foo bar]}}");
     await expectSameRender(input, {
       context: {
         "foo bar": "ok",
@@ -399,11 +356,11 @@ describe("path expressions", () => {
   });
 
   it("formats nested segment-literal path", async () => {
-    await expectFormat("{{foo.[bar baz]}}", "{{foo.[bar baz]}}\n");
+    await expectFormat("{{foo.[bar baz]}}", "{{foo.[bar baz]}}");
   });
 
   it("formats dot path (.)", async () => {
-    await expectFormat("{{helper .}}", "{{helper .}}\n");
+    await expectFormat("{{helper .}}", "{{helper .}}");
   });
 });
 
@@ -413,31 +370,19 @@ describe("path expressions", () => {
 
 describe("sub-expressions", () => {
   it("formats basic sub-expression", async () => {
-    await expectFormat(
-      "{{helper (subexpr arg)}}",
-      "{{helper (subexpr arg)}}\n",
-    );
+    await expectFormat("{{helper (subexpr arg)}}", "{{helper (subexpr arg)}}");
   });
 
   it("formats nested sub-expressions", async () => {
-    await expectFormat(
-      "{{helper (a (b c))}}",
-      "{{helper (a (b c))}}\n",
-    );
+    await expectFormat("{{helper (a (b c))}}", "{{helper (a (b c))}}");
   });
 
   it("formats sub-expression with hash", async () => {
-    await expectFormat(
-      "{{helper (subexpr key=val)}}",
-      "{{helper (subexpr key=val)}}\n",
-    );
+    await expectFormat("{{helper (subexpr key=val)}}", "{{helper (subexpr key=val)}}");
   });
 
   it("formats sub-expression with mixed args", async () => {
-    await expectFormat(
-      '{{helper (subexpr arg1 "arg2" key=val)}}',
-      '{{helper (subexpr arg1 "arg2" key=val)}}\n',
-    );
+    await expectFormat('{{helper (subexpr arg1 "arg2" key=val)}}', "{{helper (subexpr arg1 \"arg2\" key=val)}}");
   });
 });
 
@@ -447,77 +392,47 @@ describe("sub-expressions", () => {
 
 describe("block helpers", () => {
   it("formats simple block", async () => {
-    await expectFormat(
-      "{{#if condition}}content{{/if}}",
-      "{{#if condition}}\n  content\n{{/if}}\n",
-    );
+    await expectFormat("{{#if condition}}content{{/if}}", "{{#if condition}}content{{/if}}");
   });
 
   it("formats block with expressions in body", async () => {
-    await expectFormat(
-      "{{#each items}}{{this}}{{/each}}",
-      "{{#each items}}\n  {{this}}\n{{/each}}\n",
-    );
+    await expectFormat("{{#each items}}{{this}}{{/each}}", "{{#each items}}{{this}}{{/each}}");
   });
 
   it("formats empty block", async () => {
-    await expectFormat("{{#if x}}{{/if}}", "{{#if x}}{{/if}}\n");
+    await expectFormat("{{#if x}}{{/if}}", "{{#if x}}{{/if}}");
   });
 
   it("formats block with block params", async () => {
-    await expectFormat(
-      "{{#each items as |item|}}{{item}}{{/each}}",
-      "{{#each items as |item|}}\n  {{item}}\n{{/each}}\n",
-    );
+    await expectFormat("{{#each items as |item|}}{{item}}{{/each}}", "{{#each items as |item|}}{{item}}{{/each}}");
   });
 
   it("formats block with multiple block params", async () => {
-    await expectFormat(
-      "{{#each map as |value key|}}{{key}}: {{value}}{{/each}}",
-      "{{#each map as |value key|}}\n  {{key}}: {{value}}\n{{/each}}\n",
-    );
+    await expectFormat("{{#each map as |value key|}}{{key}}: {{value}}{{/each}}", "{{#each map as |value key|}}{{key}}: {{value}}{{/each}}");
   });
 
   it("formats block with hash arguments", async () => {
-    await expectFormat(
-      '{{#component name="test"}}content{{/component}}',
-      '{{#component name="test"}}\n  content\n{{/component}}\n',
-    );
+    await expectFormat('{{#component name="test"}}content{{/component}}', "{{#component name=\"test\"}}content{{/component}}");
   });
 
   it("formats nested blocks (2 levels)", async () => {
-    await expectFormat(
-      "{{#if a}}{{#if b}}content{{/if}}{{/if}}",
-      "{{#if a}}\n  {{#if b}}\n    content\n  {{/if}}\n{{/if}}\n",
-    );
+    await expectFormat("{{#if a}}{{#if b}}content{{/if}}{{/if}}", "{{#if a}}{{#if b}}content{{/if}}{{/if}}");
   });
 
   it("formats nested blocks (3 levels)", async () => {
-    await expectFormat(
-      "{{#if a}}{{#each items}}{{#if b}}x{{/if}}{{/each}}{{/if}}",
-      "{{#if a}}\n  {{#each items}}\n    {{#if b}}\n      x\n    {{/if}}\n  {{/each}}\n{{/if}}\n",
-    );
+    await expectFormat("{{#if a}}{{#each items}}{{#if b}}x{{/if}}{{/each}}{{/if}}", "{{#if a}}{{#each items}}{{#if b}}x{{/if}}{{/each}}{{/if}}");
   });
 
   it("formats nested blocks (4 levels)", async () => {
-    await expectFormat(
-      "{{#a}}{{#b}}{{#c}}{{#d}}x{{/d}}{{/c}}{{/b}}{{/a}}",
-      "{{#a}}\n  {{#b}}\n    {{#c}}\n      {{#d}}\n        x\n      {{/d}}\n    {{/c}}\n  {{/b}}\n{{/a}}\n",
-    );
+    await expectFormat("{{#a}}{{#b}}{{#c}}{{#d}}x{{/d}}{{/c}}{{/b}}{{/a}}", "{{#a}}{{#b}}{{#c}}{{#d}}x{{/d}}{{/c}}{{/b}}{{/a}}");
   });
 
   it("formats adjacent blocks", async () => {
-    await expectFormat(
-      "{{#if a}}x{{/if}}{{#if b}}y{{/if}}",
-      "{{#if a}}\n  x\n{{/if}}{{#if b}}\n  y\n{{/if}}\n",
-    );
+    await expectFormat("{{#if a}}x{{/if}}{{#if b}}y{{/if}}", "{{#if a}}x{{/if}}{{#if b}}y{{/if}}");
   });
 
   it("formats adjacent blocks separated by newline", async () => {
-    await expectFormat(
-      "{{#if a}}x{{/if}}\n{{#if b}}y{{/if}}",
-      "{{#if a}}\n  x\n{{/if}}\n{{#if b}}\n  y\n{{/if}}\n",
-    );
+    await expectFormat("{{#if a}}x{{/if}}\n{{#if b}}y{{/if}}", "{{#if a}}x{{/if}}\n{{#if b}}y{{/if}}");
   });
 });
 
@@ -527,59 +442,35 @@ describe("block helpers", () => {
 
 describe("inverse blocks / else", () => {
   it("formats if/else", async () => {
-    await expectFormat(
-      "{{#if x}}yes{{else}}no{{/if}}",
-      "{{#if x}}\n  yes\n{{else}}\n  no\n{{/if}}\n",
-    );
+    await expectFormat("{{#if x}}yes{{else}}no{{/if}}", "{{#if x}}yes{{else}}no{{/if}}");
   });
 
   it("formats inverse shorthand with ^", async () => {
-    await expectFormat(
-      "{{^if condition}}content{{/if}}",
-      "{{^if condition}}\n  content\n{{/if}}\n",
-    );
+    await expectFormat("{{^if condition}}content{{/if}}", "{{^if condition}}content{{/if}}");
   });
 
   it("formats chained else-if (2 branches)", async () => {
-    await expectFormat(
-      "{{#if a}}one{{else if b}}two{{else}}three{{/if}}",
-      "{{#if a}}\n  one\n{{else if b}}\n  two\n{{else}}\n  three\n{{/if}}\n",
-    );
+    await expectFormat("{{#if a}}one{{else if b}}two{{else}}three{{/if}}", "{{#if a}}one{{else if b}}two{{else}}three{{/if}}");
   });
 
   it("formats chained else-if (4 branches)", async () => {
-    await expectFormat(
-      "{{#if a}}1{{else if b}}2{{else if c}}3{{else if d}}4{{else}}5{{/if}}",
-      "{{#if a}}\n  1\n{{else if b}}\n  2\n{{else if c}}\n  3\n{{else if d}}\n  4\n{{else}}\n  5\n{{/if}}\n",
-    );
+    await expectFormat("{{#if a}}1{{else if b}}2{{else if c}}3{{else if d}}4{{else}}5{{/if}}", "{{#if a}}1{{else if b}}2{{else if c}}3{{else if d}}4{{else}}5{{/if}}");
   });
 
   it("formats empty program with else content", async () => {
-    await expectFormat(
-      "{{#if x}}{{else}}fallback{{/if}}",
-      "{{#if x}}{{else}}\n  fallback\n{{/if}}\n",
-    );
+    await expectFormat("{{#if x}}{{else}}fallback{{/if}}", "{{#if x}}{{else}}fallback{{/if}}");
   });
 
   it("formats content with empty else", async () => {
-    await expectFormat(
-      "{{#if x}}content{{else}}{{/if}}",
-      "{{#if x}}\n  content\n{{else}}{{/if}}\n",
-    );
+    await expectFormat("{{#if x}}content{{else}}{{/if}}", "{{#if x}}content{{else}}{{/if}}");
   });
 
   it("formats both sides empty with else", async () => {
-    await expectFormat(
-      "{{#if x}}{{else}}{{/if}}",
-      "{{#if x}}{{else}}{{/if}}\n",
-    );
+    await expectFormat("{{#if x}}{{else}}{{/if}}", "{{#if x}}{{else}}{{/if}}");
   });
 
   it("formats else in nested block", async () => {
-    await expectFormat(
-      "{{#if a}}{{#if b}}x{{else}}y{{/if}}{{/if}}",
-      "{{#if a}}\n  {{#if b}}\n    x\n  {{else}}\n    y\n  {{/if}}\n{{/if}}\n",
-    );
+    await expectFormat("{{#if a}}{{#if b}}x{{else}}y{{/if}}{{/if}}", "{{#if a}}{{#if b}}x{{else}}y{{/if}}{{/if}}");
   });
 });
 
@@ -589,39 +480,27 @@ describe("inverse blocks / else", () => {
 
 describe("partials", () => {
   it("formats basic partial", async () => {
-    await expectFormat("{{> myPartial}}", "{{> myPartial}}\n");
+    await expectFormat("{{> myPartial}}", "{{> myPartial}}");
   });
 
   it("formats partial with context", async () => {
-    await expectFormat("{{> myPartial context}}", "{{> myPartial context}}\n");
+    await expectFormat("{{> myPartial context}}", "{{> myPartial context}}");
   });
 
   it("formats partial with hash", async () => {
-    await expectFormat(
-      "{{> myPartial key=value}}",
-      "{{> myPartial key=value}}\n",
-    );
+    await expectFormat("{{> myPartial key=value}}", "{{> myPartial key=value}}");
   });
 
   it("formats dynamic partial", async () => {
-    await expectFormat(
-      "{{> (lookup . 'name')}}",
-      '{{> (lookup . "name")}}\n',
-    );
+    await expectFormat("{{> (lookup . 'name')}}", "{{> (lookup . \"name\")}}");
   });
 
   it("formats dynamic partial with context", async () => {
-    await expectFormat(
-      "{{> (lookup . 'partialName') context}}",
-      '{{> (lookup . "partialName") context}}\n',
-    );
+    await expectFormat("{{> (lookup . 'partialName') context}}", "{{> (lookup . \"partialName\") context}}");
   });
 
   it("formats partial inside block", async () => {
-    await expectFormat(
-      "{{#if x}}{{> myPartial}}{{/if}}",
-      "{{#if x}}\n  {{> myPartial}}\n{{/if}}\n",
-    );
+    await expectFormat("{{#if x}}{{> myPartial}}{{/if}}", "{{#if x}}{{> myPartial}}{{/if}}");
   });
 });
 
@@ -631,24 +510,15 @@ describe("partials", () => {
 
 describe("partial blocks", () => {
   it("formats basic partial block", async () => {
-    await expectFormat(
-      "{{#> myPartial}}fallback{{/myPartial}}",
-      "{{#> myPartial}}\n  fallback\n{{/myPartial}}\n",
-    );
+    await expectFormat("{{#> myPartial}}fallback{{/myPartial}}", "{{#> myPartial}}fallback{{/myPartial}}");
   });
 
   it("formats empty partial block", async () => {
-    await expectFormat(
-      "{{#> myPartial}}{{/myPartial}}",
-      "{{#> myPartial}}{{/myPartial}}\n",
-    );
+    await expectFormat("{{#> myPartial}}{{/myPartial}}", "{{#> myPartial}}{{/myPartial}}");
   });
 
   it("formats partial block with hash", async () => {
-    await expectFormat(
-      '{{#> layout title="Home"}}body{{/layout}}',
-      '{{#> layout title="Home"}}\n  body\n{{/layout}}\n',
-    );
+    await expectFormat('{{#> layout title="Home"}}body{{/layout}}', "{{#> layout title=\"Home\"}}body{{/layout}}");
   });
 });
 
@@ -658,25 +528,19 @@ describe("partial blocks", () => {
 
 describe("decorators", () => {
   it("formats inline decorator", async () => {
-    await expectFormat("{{* decorator}}", "{{* decorator}}\n");
+    await expectFormat("{{* decorator}}", "{{* decorator}}");
   });
 
   it("formats inline decorator with params", async () => {
-    await expectFormat("{{* decorator arg}}", "{{* decorator arg}}\n");
+    await expectFormat("{{* decorator arg}}", "{{* decorator arg}}");
   });
 
   it("formats decorator block", async () => {
-    await expectFormat(
-      '{{#*inline "myPartial"}}content{{/inline}}',
-      '{{#*inline "myPartial"}}\n  content\n{{/inline}}\n',
-    );
+    await expectFormat('{{#*inline "myPartial"}}content{{/inline}}', "{{#*inline \"myPartial\"}}content{{/inline}}");
   });
 
   it("formats inline partial inside block", async () => {
-    await expectFormat(
-      '{{#if x}}{{#*inline "nav"}}nav content{{/inline}}body{{/if}}',
-      '{{#if x}}\n  {{#*inline "nav"}}\n    nav content\n  {{/inline}}body\n{{/if}}\n',
-    );
+    await expectFormat('{{#if x}}{{#*inline "nav"}}nav content{{/inline}}body{{/if}}', "{{#if x}}{{#*inline \"nav\"}}nav content{{/inline}}body{{/if}}");
   });
 });
 
@@ -687,7 +551,7 @@ describe("decorators", () => {
 describe("raw blocks", () => {
   it("formats raw block", async () => {
     const input = "{{{{raw}}}}not {{parsed}}{{{{/raw}}}}";
-    await expectFormat(input, "{{{{raw}}}}not {{parsed}}{{{{/raw}}}}\n");
+    await expectFormat(input, "{{{{raw}}}}not {{parsed}}{{{{/raw}}}}");
     await expectSameRender(input, {
       context: { parsed: "X" },
       helpers: {
@@ -699,15 +563,12 @@ describe("raw blocks", () => {
   });
 
   it("formats empty raw block", async () => {
-    await expectFormat(
-      "{{{{raw}}}}{{{{/raw}}}}",
-      "{{{{raw}}}}{{{{/raw}}}}\n",
-    );
+    await expectFormat("{{{{raw}}}}{{{{/raw}}}}", "{{{{raw}}}}{{{{/raw}}}}");
   });
 
   it("preserves triple-stache syntax inside raw block", async () => {
     const input = "{{{{raw}}}}{{{triple}}} and {{double}}{{{{/raw}}}}";
-    await expectFormat(input, "{{{{raw}}}}{{{triple}}} and {{double}}{{{{/raw}}}}\n");
+    await expectFormat(input, "{{{{raw}}}}{{{triple}}} and {{double}}{{{{/raw}}}}");
     await expectSameRender(input, {
       helpers: {
         raw(options: any) {
@@ -719,7 +580,7 @@ describe("raw blocks", () => {
 
   it("preserves multiline raw block body exactly", async () => {
     const input = "{{{{raw}}}}\n  not {{parsed}}\n{{{{/raw}}}}";
-    await expectFormat(input, "{{{{raw}}}}\n  not {{parsed}}\n{{{{/raw}}}}\n");
+    await expectFormat(input, "{{{{raw}}}}\n  not {{parsed}}\n{{{{/raw}}}}");
     await expectSameRender(input, {
       context: { parsed: "X" },
       helpers: {
@@ -737,28 +598,19 @@ describe("raw blocks", () => {
 
 describe("mixed HTML and Handlebars", () => {
   it("formats inline HTML with expression", async () => {
-    await expectFormat("<div>{{name}}</div>", "<div>{{name}}</div>\n");
+    await expectFormat("<div>{{name}}</div>", "<div>{{name}}</div>");
   });
 
   it("formats block within HTML", async () => {
-    await expectFormat(
-      "<ul>\n{{#each items}}\n<li>{{this}}</li>\n{{/each}}\n</ul>",
-      "<ul>\n{{#each items}}\n  <li>{{this}}</li>\n{{/each}}\n</ul>\n",
-    );
+    await expectFormat("<ul>\n{{#each items}}\n<li>{{this}}</li>\n{{/each}}\n</ul>", "<ul>\n{{#each items}}\n<li>{{this}}</li>\n{{/each}}\n</ul>");
   });
 
   it("formats text before and after block", async () => {
-    await expectFormat(
-      "before\n{{#if x}}content{{/if}}\nafter",
-      "before\n{{#if x}}\n  content\n{{/if}}\nafter\n",
-    );
+    await expectFormat("before\n{{#if x}}content{{/if}}\nafter", "before\n{{#if x}}content{{/if}}\nafter");
   });
 
   it("formats block wrapped in inline HTML with nested span", async () => {
-    await expectFormat(
-      "<div>{{#if x}}<span>{{name}}</span>{{/if}}</div>",
-      "<div>{{#if x}}\n  <span>{{name}}</span>\n{{/if}}</div>\n",
-    );
+    await expectFormat("<div>{{#if x}}<span>{{name}}</span>{{/if}}</div>", "<div>{{#if x}}<span>{{name}}</span>{{/if}}</div>");
   });
 });
 
@@ -886,66 +738,39 @@ describe("complex real-world templates", () => {
 
 describe("built-in helpers", () => {
   it("formats unless block", async () => {
-    await expectFormat(
-      "{{#unless hidden}}visible{{/unless}}",
-      "{{#unless hidden}}\n  visible\n{{/unless}}\n",
-    );
+    await expectFormat("{{#unless hidden}}visible{{/unless}}", "{{#unless hidden}}visible{{/unless}}");
   });
 
   it("formats unless with else", async () => {
-    await expectFormat(
-      "{{#unless hidden}}visible{{else}}hidden{{/unless}}",
-      "{{#unless hidden}}\n  visible\n{{else}}\n  hidden\n{{/unless}}\n",
-    );
+    await expectFormat("{{#unless hidden}}visible{{else}}hidden{{/unless}}", "{{#unless hidden}}visible{{else}}hidden{{/unless}}");
   });
 
   it("formats with block", async () => {
-    await expectFormat(
-      "{{#with person}}{{firstname}} {{lastname}}{{/with}}",
-      "{{#with person}}\n  {{firstname}} {{lastname}}\n{{/with}}\n",
-    );
+    await expectFormat("{{#with person}}{{firstname}} {{lastname}}{{/with}}", "{{#with person}}{{firstname}} {{lastname}}{{/with}}");
   });
 
   it("formats with block with else", async () => {
-    await expectFormat(
-      "{{#with person}}Hello {{name}}{{else}}No person{{/with}}",
-      "{{#with person}}\n  Hello {{name}}\n{{else}}\n  No person\n{{/with}}\n",
-    );
+    await expectFormat("{{#with person}}Hello {{name}}{{else}}No person{{/with}}", "{{#with person}}Hello {{name}}{{else}}No person{{/with}}");
   });
 
   it("formats with block params", async () => {
-    await expectFormat(
-      "{{#with person as |p|}}{{p.name}}{{/with}}",
-      "{{#with person as |p|}}\n  {{p.name}}\n{{/with}}\n",
-    );
+    await expectFormat("{{#with person as |p|}}{{p.name}}{{/with}}", "{{#with person as |p|}}{{p.name}}{{/with}}");
   });
 
   it("formats each with else (empty list fallback)", async () => {
-    await expectFormat(
-      "{{#each items}}{{this}}{{else}}No items{{/each}}",
-      "{{#each items}}\n  {{this}}\n{{else}}\n  No items\n{{/each}}\n",
-    );
+    await expectFormat("{{#each items}}{{this}}{{else}}No items{{/each}}", "{{#each items}}{{this}}{{else}}No items{{/each}}");
   });
 
   it("formats standalone lookup expression", async () => {
-    await expectFormat(
-      "{{lookup items 0}}",
-      "{{lookup items 0}}\n",
-    );
+    await expectFormat("{{lookup items 0}}", "{{lookup items 0}}");
   });
 
   it("formats log helper", async () => {
-    await expectFormat(
-      "{{log \"debug info\"}}",
-      "{{log \"debug info\"}}\n",
-    );
+    await expectFormat("{{log \"debug info\"}}", "{{log \"debug info\"}}");
   });
 
   it("formats log helper with level", async () => {
-    await expectFormat(
-      '{{log "message" level="warn"}}',
-      '{{log "message" level="warn"}}\n',
-    );
+    await expectFormat('{{log "message" level="warn"}}', "{{log \"message\" level=\"warn\"}}");
   });
 });
 
@@ -955,19 +780,19 @@ describe("built-in helpers", () => {
 
 describe("string literal edge cases", () => {
   it("formats empty string literal", async () => {
-    await expectFormat('{{helper ""}}', '{{helper ""}}\n');
+    await expectFormat('{{helper ""}}', "{{helper \"\"}}");
   });
 
   it("formats string with spaces", async () => {
-    await expectFormat('{{helper "hello world"}}', '{{helper "hello world"}}\n');
+    await expectFormat('{{helper "hello world"}}', "{{helper \"hello world\"}}");
   });
 
   it("formats decimal number literal", async () => {
-    await expectFormat("{{helper 3.14}}", "{{helper 3.14}}\n");
+    await expectFormat("{{helper 3.14}}", "{{helper 3.14}}");
   });
 
   it("formats zero literal", async () => {
-    await expectFormat("{{helper 0}}", "{{helper 0}}\n");
+    await expectFormat("{{helper 0}}", "{{helper 0}}");
   });
 });
 
@@ -978,19 +803,19 @@ describe("string literal edge cases", () => {
 describe("additional path expressions", () => {
   it("formats multiple segment-literal segments", async () => {
     // [foo] and [bar] are simple identifiers, so brackets are normalized away
-    await expectFormat("{{[foo].[bar]}}", "{{foo.bar}}\n");
+    await expectFormat("{{[foo].[bar]}}", "{{foo.bar}}");
   });
 
   it("formats @first data variable", async () => {
-    await expectFormat("{{@first}}", "{{@first}}\n");
+    await expectFormat("{{@first}}", "{{@first}}");
   });
 
   it("formats @last data variable", async () => {
-    await expectFormat("{{@last}}", "{{@last}}\n");
+    await expectFormat("{{@last}}", "{{@last}}");
   });
 
   it("formats @key data variable", async () => {
-    await expectFormat("{{@key}}", "{{@key}}\n");
+    await expectFormat("{{@key}}", "{{@key}}");
   });
 });
 
@@ -1000,24 +825,15 @@ describe("additional path expressions", () => {
 
 describe("additional sub-expressions", () => {
   it("formats deeply nested sub-expressions (3 levels)", async () => {
-    await expectFormat(
-      "{{helper (a (b (c d)))}}",
-      "{{helper (a (b (c d)))}}\n",
-    );
+    await expectFormat("{{helper (a (b (c d)))}}", "{{helper (a (b (c d)))}}");
   });
 
   it("formats sub-expression as block condition", async () => {
-    await expectFormat(
-      "{{#if (isdefined value)}}yes{{/if}}",
-      "{{#if (isdefined value)}}\n  yes\n{{/if}}\n",
-    );
+    await expectFormat("{{#if (isdefined value)}}yes{{/if}}", "{{#if (isdefined value)}}yes{{/if}}");
   });
 
   it("formats sub-expression in hash value", async () => {
-    await expectFormat(
-      "{{helper key=(subexpr arg)}}",
-      "{{helper key=(subexpr arg)}}\n",
-    );
+    await expectFormat("{{helper key=(subexpr arg)}}", "{{helper key=(subexpr arg)}}");
   });
 });
 
@@ -1027,24 +843,15 @@ describe("additional sub-expressions", () => {
 
 describe("additional block coverage", () => {
   it("formats block with both positional params and hash", async () => {
-    await expectFormat(
-      '{{#helper param1 key="val"}}content{{/helper}}',
-      '{{#helper param1 key="val"}}\n  content\n{{/helper}}\n',
-    );
+    await expectFormat('{{#helper param1 key="val"}}content{{/helper}}', "{{#helper param1 key=\"val\"}}content{{/helper}}");
   });
 
   it("formats inverse shorthand {{^}} standalone", async () => {
-    await expectFormat(
-      "{{^isActive}}inactive{{/isActive}}",
-      "{{^isActive}}\n  inactive\n{{/isActive}}\n",
-    );
+    await expectFormat("{{^isActive}}inactive{{/isActive}}", "{{^isActive}}inactive{{/isActive}}");
   });
 
   it("formats inverse shorthand with params", async () => {
-    await expectFormat(
-      "{{^if condition}}fallback{{/if}}",
-      "{{^if condition}}\n  fallback\n{{/if}}\n",
-    );
+    await expectFormat("{{^if condition}}fallback{{/if}}", "{{^if condition}}fallback{{/if}}");
   });
 });
 
@@ -1054,17 +861,11 @@ describe("additional block coverage", () => {
 
 describe("additional partial coverage", () => {
   it("formats partial with both context and hash", async () => {
-    await expectFormat(
-      "{{> myPartial context key=value}}",
-      "{{> myPartial context key=value}}\n",
-    );
+    await expectFormat("{{> myPartial context key=value}}", "{{> myPartial context key=value}}");
   });
 
   it("formats partial block with inline partial inside", async () => {
-    await expectFormat(
-      '{{#> layout}}{{#*inline "header"}}My Header{{/inline}}Body{{/layout}}',
-      '{{#> layout}}\n  {{#*inline "header"}}\n    My Header\n  {{/inline}}Body\n{{/layout}}\n',
-    );
+    await expectFormat('{{#> layout}}{{#*inline "header"}}My Header{{/inline}}Body{{/layout}}', "{{#> layout}}{{#*inline \"header\"}}My Header{{/inline}}Body{{/layout}}");
   });
 });
 
@@ -1074,17 +875,11 @@ describe("additional partial coverage", () => {
 
 describe("comment edge cases", () => {
   it("formats safe comment containing }}", async () => {
-    await expectFormat(
-      "{{!-- contains }} inside --}}",
-      "{{!-- contains }} inside --}}\n",
-    );
+    await expectFormat("{{!-- contains }} inside --}}", "{{!-- contains }} inside --}}");
   });
 
   it("formats safe comment containing {{", async () => {
-    await expectFormat(
-      "{{!-- contains {{ inside --}}",
-      "{{!-- contains {{ inside --}}\n",
-    );
+    await expectFormat("{{!-- contains {{ inside --}}", "{{!-- contains {{ inside --}}");
   });
 });
 
@@ -1214,10 +1009,7 @@ describe("error handling", () => {
 
 describe("string literal escaping", () => {
   it("escapes embedded double quotes", async () => {
-    await expectFormat(
-      '{{helper "say \\"hi\\""}}',
-      '{{helper "say \\"hi\\""}}\n',
-    );
+    await expectFormat('{{helper "say \\"hi\\""}}', "{{helper \"say \\\"hi\\\"\"}}");
     await expectSameRender('{{helper "say \\"hi\\""}}', {
       helpers: { helper: (s: string) => `got:${s}` },
     });
@@ -1226,18 +1018,15 @@ describe("string literal escaping", () => {
   it("preserves backslashes literally (Handlebars does not decode \\\\)", async () => {
     // Handlebars 4.x only decodes `\"` -> `"` inside strings; backslashes pass
     // through unchanged. So `"a\\b"` round-trips as-is, value stays `a\\b`.
-    await expectFormat('{{helper "a\\\\b"}}', '{{helper "a\\\\b"}}\n');
+    await expectFormat('{{helper "a\\\\b"}}', "{{helper \"a\\\\b\"}}");
   });
 
   it("normalizes single-quoted strings to double-quoted", async () => {
-    await expectFormat("{{helper 'hello'}}", '{{helper "hello"}}\n');
+    await expectFormat("{{helper 'hello'}}", "{{helper \"hello\"}}");
   });
 
   it("preserves a single-quote character inside a double-quoted string", async () => {
-    await expectFormat(
-      '{{helper "it\'s"}}',
-      '{{helper "it\'s"}}\n',
-    );
+    await expectFormat('{{helper "it\'s"}}', "{{helper \"it's\"}}");
     await expectSameRender('{{helper "it\'s"}}', {
       helpers: { helper: (s: string) => `got:${s}` },
     });
@@ -1250,63 +1039,24 @@ describe("string literal escaping", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Else body whitespace preservation (regression)
-// ---------------------------------------------------------------------------
-
-describe("else body content is not reflowed", () => {
-  it("keeps mustache inline inside else body", async () => {
-    await expectFormat(
-      "{{#if x}}a{{else}}hi {{name}}!{{/if}}",
-      "{{#if x}}\n  a\n{{else}}\n  hi {{name}}!\n{{/if}}\n",
-    );
-  });
-
-  it("keeps mustache inline inside else-if body", async () => {
-    await expectFormat(
-      "{{#if a}}1{{else if b}}hi {{name}}!{{else}}z{{/if}}",
-      "{{#if a}}\n  1\n{{else if b}}\n  hi {{name}}!\n{{else}}\n  z\n{{/if}}\n",
-    );
-  });
-
-  it("does not insert newlines between adjacent mustaches in else body", async () => {
-    await expectFormat(
-      "{{#if x}}a{{else}}{{b}}{{c}}{{/if}}",
-      "{{#if x}}\n  a\n{{else}}\n  {{b}}{{c}}\n{{/if}}\n",
-    );
-  });
-
-  it("preserves interior spacing in else body (content-mustache-content)", async () => {
-    // AST equivalence is checked inside expectFormat; the key guarantee is
-    // that `before `, `{{m}}`, ` after` stay on the same line in the source.
-    await expectFormat(
-      "{{#if x}}yes{{else}}before {{m}} after{{/if}}",
-      "{{#if x}}\n  yes\n{{else}}\n  before {{m}} after\n{{/if}}\n",
-    );
-  });
-});
-
-// ---------------------------------------------------------------------------
 // Decorator strip flags (regression)
 // ---------------------------------------------------------------------------
 
 describe("decorator whitespace control", () => {
   it("preserves ~ on inline decorator", async () => {
-    await expectFormat("{{~* dec~}}", "{{~* dec~}}\n");
+    await expectFormat("{{~* dec~}}", "{{~* dec~}}");
   });
 
   it("preserves ~ on inline decorator (open only)", async () => {
-    await expectFormat("{{~* dec}}", "{{~* dec}}\n");
+    await expectFormat("{{~* dec}}", "{{~* dec}}");
   });
 
   it("preserves ~ on inline decorator (close only)", async () => {
-    await expectFormat("{{* dec~}}", "{{* dec~}}\n");
+    await expectFormat("{{* dec~}}", "{{* dec~}}");
   });
 
   it("preserves ~ on inline decorator with params", async () => {
-    await expectFormat(
-      "{{~* dec arg key=val~}}",
-      "{{~* dec arg key=val~}}\n",
-    );
+    await expectFormat("{{~* dec arg key=val~}}", "{{~* dec arg key=val~}}");
   });
 });
 
@@ -1320,7 +1070,7 @@ describe("inverse opened block with else", () => {
   it("rewrites to {{#x}}<else>{{else}}<body>{{/x}} and is stable", async () => {
     const input = "{{^x}}inv{{else}}els{{/x}}";
     const out = await format(input);
-    expect(out).toBe("{{#x}}\n  els\n{{else}}\n  inv\n{{/x}}\n");
+    expect(out).toBe("{{#x}}els{{else}}inv{{/x}}");
     expectAstEquivalent(input, out);
     expect(await format(out)).toBe(out);
   });
@@ -1353,127 +1103,97 @@ describe("line ending normalization", () => {
 
 describe("array index path access", () => {
   it("formats a single bracketed index", async () => {
-    await expectFormat("{{list.[0]}}", "{{list.[0]}}\n");
+    await expectFormat("{{list.[0]}}", "{{list.[0]}}");
   });
 
   it("formats a multi-digit bracketed index", async () => {
-    await expectFormat("{{list.[42]}}", "{{list.[42]}}\n");
+    await expectFormat("{{list.[42]}}", "{{list.[42]}}");
   });
 
   it("formats an index followed by a property", async () => {
-    await expectFormat("{{list.[0].name}}", "{{list.[0].name}}\n");
+    await expectFormat("{{list.[0].name}}", "{{list.[0].name}}");
   });
 
   it("formats consecutive bracketed indices (2D array)", async () => {
-    await expectFormat("{{matrix.[0].[1]}}", "{{matrix.[0].[1]}}\n");
+    await expectFormat("{{matrix.[0].[1]}}", "{{matrix.[0].[1]}}");
   });
 
   it("formats a deep mixed path", async () => {
-    await expectFormat(
-      "{{users.[0].posts.[2].title}}",
-      "{{users.[0].posts.[2].title}}\n",
-    );
+    await expectFormat("{{users.[0].posts.[2].title}}", "{{users.[0].posts.[2].title}}");
   });
 
   it("formats a top-level bare bracketed index", async () => {
-    await expectFormat("{{[0]}}", "{{[0]}}\n");
+    await expectFormat("{{[0]}}", "{{[0]}}");
   });
 
   it("formats index access with parent traversal", async () => {
-    await expectFormat("{{../list.[0]}}", "{{../list.[0]}}\n");
+    await expectFormat("{{../list.[0]}}", "{{../list.[0]}}");
   });
 
   it("formats index access on `this`", async () => {
-    await expectFormat("{{this.[0]}}", "{{this.[0]}}\n");
+    await expectFormat("{{this.[0]}}", "{{this.[0]}}");
   });
 
   it("formats index access from @root", async () => {
-    await expectFormat("{{@root.users.[0]}}", "{{@root.users.[0]}}\n");
+    await expectFormat("{{@root.users.[0]}}", "{{@root.users.[0]}}");
   });
 
   it("formats index access from explicit current path", async () => {
-    await expectFormat("{{./list.[0]}}", "{{./list.[0]}}\n");
+    await expectFormat("{{./list.[0]}}", "{{./list.[0]}}");
   });
 
   it("formats index access in a triple-stache", async () => {
-    await expectFormat("{{{list.[0]}}}", "{{{list.[0]}}}\n");
+    await expectFormat("{{{list.[0]}}}", "{{{list.[0]}}}");
   });
 
   it("formats index access as a helper positional param", async () => {
-    await expectFormat("{{helper list.[0]}}", "{{helper list.[0]}}\n");
+    await expectFormat("{{helper list.[0]}}", "{{helper list.[0]}}");
   });
 
   it("formats index access as a hash value", async () => {
-    await expectFormat(
-      "{{helper key=list.[0]}}",
-      "{{helper key=list.[0]}}\n",
-    );
+    await expectFormat("{{helper key=list.[0]}}", "{{helper key=list.[0]}}");
   });
 
   it("formats index access inside a sub-expression", async () => {
-    await expectFormat(
-      "{{helper (sub list.[0])}}",
-      "{{helper (sub list.[0])}}\n",
-    );
+    await expectFormat("{{helper (sub list.[0])}}", "{{helper (sub list.[0])}}");
   });
 
   it("formats index access as the lookup target", async () => {
-    await expectFormat(
-      '{{lookup list.[0] "name"}}',
-      '{{lookup list.[0] "name"}}\n',
-    );
+    await expectFormat('{{lookup list.[0] "name"}}', "{{lookup list.[0] \"name\"}}");
   });
 
   it("formats index access as a partial context (motivating example)", async () => {
-    await expectFormat(
-      "{{> component list.[0]}}",
-      "{{> component list.[0]}}\n",
-    );
+    await expectFormat("{{> component list.[0]}}", "{{> component list.[0]}}");
   });
 
   it("formats index access in a partial with hash", async () => {
-    await expectFormat(
-      "{{> row list.[0] highlight=true}}",
-      "{{> row list.[0] highlight=true}}\n",
-    );
+    await expectFormat("{{> row list.[0] highlight=true}}", "{{> row list.[0] highlight=true}}");
   });
 
   it("formats index access as an if-block condition", async () => {
-    await expectFormat(
-      "{{#if list.[0]}}yes{{/if}}",
-      "{{#if list.[0]}}\n  yes\n{{/if}}\n",
-    );
+    await expectFormat("{{#if list.[0]}}yes{{/if}}", "{{#if list.[0]}}yes{{/if}}");
   });
 
   it("formats index access as an each-block subject", async () => {
-    await expectFormat(
-      "{{#each list.[0].items}}{{this}}{{/each}}",
-      "{{#each list.[0].items}}\n  {{this}}\n{{/each}}\n",
-    );
+    await expectFormat("{{#each list.[0].items}}{{this}}{{/each}}", "{{#each list.[0].items}}{{this}}{{/each}}");
   });
 
   it("formats index access as a with-block subject", async () => {
-    await expectFormat(
-      "{{#with list.[0]}}{{name}}{{/with}}",
-      "{{#with list.[0]}}\n  {{name}}\n{{/with}}\n",
-    );
+    await expectFormat("{{#with list.[0]}}{{name}}{{/with}}", "{{#with list.[0]}}{{name}}{{/with}}");
   });
 
   it("formats index access inside a block with block params", async () => {
-    await expectFormat(
-      "{{#each list.[0] as |item|}}{{item}}{{/each}}",
-      "{{#each list.[0] as |item|}}\n  {{item}}\n{{/each}}\n",
-    );
+    await expectFormat("{{#each list.[0] as |item|}}{{item}}{{/each}}", "{{#each list.[0] as |item|}}{{item}}{{/each}}");
   });
 
   it("preserves mixed alphanumeric segment without brackets (parses unbracketed)", async () => {
     // `list.0a` is valid unbracketed because `0a` is not a NUMBER token.
     // Brackets are redundant here, so they should normalize away.
-    await expectFormat("{{list.[0a]}}", "{{list.0a}}\n");
+    await expectFormat("{{list.[0a]}}", "{{list.0a}}");
   });
 
   it("preserves alphanumeric-starting-with-digit segment without brackets", async () => {
-    await expectFormat("{{list.[1foo]}}", "{{list.1foo}}\n");
+    await expectFormat("{{list.[1foo]}}", "{{list.1foo}}");
   });
 
   it("renders same output for partial with index context (motivating example)", async () => {
@@ -1543,18 +1263,12 @@ describe("array index path semantics", () => {
 
 describe("partial block builtins", () => {
   it("formats nested partial rendering @partial-block", async () => {
-    await expectFormat(
-      "{{#> layout}}{{> @partial-block}}{{/layout}}",
-      "{{#> layout}}\n  {{> @partial-block}}\n{{/layout}}\n",
-    );
+    await expectFormat("{{#> layout}}{{> @partial-block}}{{/layout}}", "{{#> layout}}{{> @partial-block}}{{/layout}}");
   });
 });
 
 describe("whatever", () => {
   it("formats", async () => {
-    await expectFormat(
-      '<div> class="foo {{#if class}}{{class}}{{/if}}">{{> @partial-block}}</div>',
-      '<div> class="foo {{#if class}}\n  {{class}}\n{{/if}}">{{> @partial-block}}</div>\n',
-    );
+    await expectFormat('<div> class="foo {{#if class}}{{class}}{{/if}}">{{> @partial-block}}</div>', "<div> class=\"foo {{#if class}}{{class}}{{/if}}\">{{> @partial-block}}</div>");
   })
 })

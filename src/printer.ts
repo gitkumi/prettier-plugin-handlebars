@@ -1,6 +1,6 @@
 import { doc, type AstPath, type Doc, type ParserOptions } from "prettier";
 
-const { join, indent, hardline } = doc.builders;
+const { join } = doc.builders;
 
 type Node = hbs.AST.Node;
 type PrintFn = (path: AstPath<any>) => Doc;
@@ -68,19 +68,8 @@ function isEmpty(program: hbs.AST.Program | undefined | null): boolean {
   return !program?.body?.length;
 }
 
-function indentedBlock(body: Doc[]): Doc[] {
-  return [indent([hardline, ...body]), hardline];
-}
-
 function printBody(path: AstPath<any>, print: PrintFn, key: string): Doc[] {
-  return indentedBlock(path.call((p: AstPath<any>) => p.map(print, "body"), key));
-}
-
-function trimBlockContent(value: string, isFirst: boolean, isLast: boolean): string {
-  let result = value;
-  if (isFirst) result = result.replace(/^\s+/, "");
-  if (isLast) result = result.replace(/\s+$/, "");
-  return result;
+  return path.call((p: AstPath<any>) => p.map(print, "body"), key);
 }
 
 // `@types/handlebars` types `ContentStatement.original` as `StripFlags`, but
@@ -169,27 +158,11 @@ export const printer = {
       case "Program": {
         const program = node as hbs.AST.Program;
         if (!program.body?.length) return "";
-        return [...path.map(print, "body"), hardline];
+        return path.map(print, "body");
       }
 
-      case "ContentStatement": {
-        const content = node as hbs.AST.ContentStatement;
-        let text = contentText(content);
-        const parent = path.getParentNode();
-        if (parent && (parent as Node).type === "Program") {
-          const idx = path.getName() as number;
-          const isLast = idx === (parent as hbs.AST.Program).body.length - 1;
-          const grandparent = path.getParentNode(1) as Node | null;
-          if (grandparent && grandparent.type !== undefined) {
-            return trimBlockContent(text, idx === 0, isLast);
-          }
-          // Root-level Program appends its own hardline; avoid doubling it.
-          if (isLast) {
-            text = text.replace(/\n+$/, "");
-          }
-        }
-        return text;
-      }
+      case "ContentStatement":
+        return contentText(node as hbs.AST.ContentStatement);
 
       case "MustacheStatement": {
         const m = node as hbs.AST.MustacheStatement;
@@ -389,9 +362,7 @@ function printInverse(
         );
         if (!isEmpty(chained.program)) {
           parts.push(
-            ...indentedBlock(
-              blockPath.call((pgm: AstPath<any>) => pgm.map(print, "body"), "program"),
-            ),
+            ...blockPath.call((pgm: AstPath<any>) => pgm.map(print, "body"), "program"),
           );
         }
         printInverse(chained, blockPath, print, parts);
@@ -401,7 +372,7 @@ function printInverse(
       const { open, close } = delims("else", "", block.inverseStrip);
       parts.push(open + close);
       if (inverse.body.length) {
-        parts.push(...indentedBlock(inversePath.map(print, "body")));
+        parts.push(...inversePath.map(print, "body"));
       }
     }
   }, "inverse");
