@@ -1,23 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+import { errorCases } from "./cases.ts";
 import { format, loadFixture } from "./helpers.ts";
 
-// ---------------------------------------------------------------------------
-// Error handling
-// ---------------------------------------------------------------------------
-
 describe("error handling", () => {
-  it("throws on invalid syntax", async () => {
-    const { input } = loadFixture("errors/missing-condition");
-    await expect(format(input)).rejects.toThrow();
-  });
-
-  it("throws on unclosed block", async () => {
-    const { input } = loadFixture("errors/unclosed-block");
-    await expect(format(input)).rejects.toThrow();
-  });
-
-  it("throws on mismatched close tag", async () => {
-    const { input } = loadFixture("errors/mismatched-close");
+  it.each(errorCases)("throws for $fixture", async ({ fixture }) => {
+    const { input } = loadFixture(fixture);
     await expect(format(input)).rejects.toThrow();
   });
 });
