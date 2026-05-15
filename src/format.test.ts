@@ -1549,3 +1549,12 @@ describe("partial block builtins", () => {
     );
   });
 });
+
+describe("whatever", () => {
+  it("formats", async () => {
+    await expectFormat(
+      '<div> class="foo {{#if class}}{{class}}{{/if}}">{{> @partial-block}}</div>',
+      '<div> class="foo {{#if class}}\n  {{class}}\n{{/if}}">{{> @partial-block}}</div>\n',
+    );
+  })
+})

@@ -5,19 +5,35 @@ const { join, indent, hardline } = doc.builders;
 type Node = hbs.AST.Node;
 type PrintFn = (path: AstPath<any>) => Doc;
 
-function stripFlags(strip: hbs.AST.StripFlags | undefined): { open: string; close: string } {
-  return { open: strip?.open ? "~" : "", close: strip?.close ? "~" : "" };
+// The parser annotates each node with source offsets; many helpers need them
+// to disambiguate AST forms that share a shape (e.g. `{{! }}` vs `{{!-- --}}`).
+type Annotated<T> = T & { _start: number; _end: number };
+
+// ---------------------------------------------------------------------------
+// Delimiter helpers
+// ---------------------------------------------------------------------------
+
+// Build the open/close delimiter strings for a Handlebars tag, applying any
+// `~` strip flags and an inner sigil. For example:
+//   delims("#", "",   strip)       -> `{{#` / `}}`     (or `{{~#` / `~}}`)
+//   delims("!-- ", " --", strip)   -> `{{!-- ` / ` --}}`
+//   delims("",  "",   strip, true) -> `{{{` / `}}}`    (triple-stache)
+function delims(
+  prefix: string,
+  suffix: string,
+  strip: hbs.AST.StripFlags | undefined,
+  triple = false,
+): { open: string; close: string } {
+  const lhs = triple ? "{{{" : "{{";
+  const rhs = triple ? "}}}" : "}}";
+  const lstrip = strip?.open ? "~" : "";
+  const rstrip = strip?.close ? "~" : "";
+  return { open: lhs + lstrip + prefix, close: suffix + rstrip + rhs };
 }
 
-function openMustache(node: hbs.AST.MustacheStatement): string {
-  const { open } = stripFlags(node.strip);
-  return (node.escaped === false ? "{{{" : "{{") + open;
-}
-
-function closeMustache(node: hbs.AST.MustacheStatement): string {
-  const { close } = stripFlags(node.strip);
-  return close + (node.escaped === false ? "}}}" : "}}");
-}
+// ---------------------------------------------------------------------------
+// Params, hash, block params
+// ---------------------------------------------------------------------------
 
 type HasParamsAndHash = {
   params?: hbs.AST.Expression[];
@@ -44,6 +60,10 @@ function blockParams(program: hbs.AST.Program | undefined): string {
   return "";
 }
 
+// ---------------------------------------------------------------------------
+// Body / content helpers
+// ---------------------------------------------------------------------------
+
 function isEmpty(program: hbs.AST.Program | undefined | null): boolean {
   return !program?.body?.length;
 }
@@ -62,6 +82,17 @@ function trimBlockContent(value: string, isFirst: boolean, isLast: boolean): str
   if (isLast) result = result.replace(/\s+$/, "");
   return result;
 }
+
+// `@types/handlebars` types `ContentStatement.original` as `StripFlags`, but
+// the parser stores the raw source text there. Cast through `unknown` to
+// recover the actual runtime type.
+function contentText(node: hbs.AST.ContentStatement): string {
+  return (node.original as unknown as string) ?? node.value;
+}
+
+// ---------------------------------------------------------------------------
+// Path expressions
+// ---------------------------------------------------------------------------
 
 function isSimplePathSegment(part: string): boolean {
   // Handlebars' lexer consumes purely-numeric segments as a NUMBER token, so
@@ -96,18 +127,9 @@ function printPathExpression(node: hbs.AST.PathExpression): string {
   return "../".repeat(node.depth) + pathValue;
 }
 
-function printRawBody(program: hbs.AST.Program | undefined): string {
-  if (!program?.body?.length) return "";
-  return program.body
-    .map((statement) => {
-      const s = statement as hbs.AST.ContentStatement;
-      return (s.original as unknown as string) ?? s.value ?? "";
-    })
-    .join("");
-}
-
-// Offsets are required to look at source slices; the parser annotates them.
-type Annotated<T> = T & { _start: number; _end: number };
+// ---------------------------------------------------------------------------
+// Source-slice disambiguation
+// ---------------------------------------------------------------------------
 
 // {{!-- ... --}} vs {{! ... }}. The parser's AST doesn't distinguish, so we
 // look at the source slice at the node's start offset.
@@ -127,6 +149,17 @@ function isInverseOpened(node: hbs.AST.BlockStatement): boolean {
   return !node.program && !!node.inverse;
 }
 
+function printRawBody(program: hbs.AST.Program | undefined): string {
+  if (!program?.body?.length) return "";
+  return program.body
+    .map((s) => contentText(s as hbs.AST.ContentStatement))
+    .join("");
+}
+
+// ---------------------------------------------------------------------------
+// Printer
+// ---------------------------------------------------------------------------
+
 export const printer = {
   print(path: AstPath<any>, options: ParserOptions, print: PrintFn): Doc {
     const node = path.node;
@@ -141,7 +174,7 @@ export const printer = {
 
       case "ContentStatement": {
         const content = node as hbs.AST.ContentStatement;
-        let text = (content.original as unknown as string) ?? content.value;
+        let text = contentText(content);
         const parent = path.getParentNode();
         if (parent && (parent as Node).type === "Program") {
           const idx = path.getName() as number;
@@ -160,13 +193,20 @@ export const printer = {
 
       case "MustacheStatement": {
         const m = node as hbs.AST.MustacheStatement;
-        return [openMustache(m), path.call(print, "path"), ...printParams(m, print, path), closeMustache(m)];
+        const { open, close } = delims("", "", m.strip, m.escaped === false);
+        return [open, path.call(print, "path"), ...printParams(m, print, path), close];
       }
 
       case "Decorator": {
         const d = node as hbs.AST.Decorator;
-        const { open: ot, close: ct } = stripFlags(d.strip);
-        return ["{{" + ot + "* ", path.call(print, "path"), ...printParams(d, print, path), ct + "}}"];
+        const { open, close } = delims("* ", "", d.strip);
+        return [open, path.call(print, "path"), ...printParams(d, print, path), close];
+      }
+
+      case "PartialStatement": {
+        const p = node as hbs.AST.PartialStatement;
+        const { open, close } = delims("> ", "", p.strip);
+        return [open, path.call(print, "name"), ...printParams(p, print, path), close];
       }
 
       case "PathExpression":
@@ -202,27 +242,11 @@ export const printer = {
         return [pair.key, "=", path.call(print, "value")];
       }
 
-      case "CommentStatement": {
-        const c = node as Annotated<hbs.AST.CommentStatement>;
-        const val = c.value;
-        const { open: ot, close: ct } = stripFlags(c.strip);
-        if (isSafeComment(c, source)) {
-          if (val.includes("\n")) {
-            return ["{{" + ot + "!--", val, "--" + ct + "}}"];
-          }
-          return ["{{" + ot + "!-- ", val.trim(), " --" + ct + "}}"];
-        }
-        return ["{{" + ot + "! ", val.trim(), " " + ct + "}}"];
-      }
+      case "CommentStatement":
+        return printComment(node as Annotated<hbs.AST.CommentStatement>, source);
 
       case "BlockStatement":
         return printBlock(node as Annotated<hbs.AST.BlockStatement>, path, print, source);
-
-      case "PartialStatement": {
-        const p = node as hbs.AST.PartialStatement;
-        const { open: ot, close: ct } = stripFlags(p.strip);
-        return ["{{" + ot + "> ", path.call(print, "name"), ...printParams(p, print, path), ct + "}}"];
-      }
 
       case "PartialBlockStatement":
         return printSimpleBlock("{{#> ", "name", node as hbs.AST.PartialBlockStatement, path, print);
@@ -249,6 +273,28 @@ export const printer = {
     }
   },
 };
+
+// ---------------------------------------------------------------------------
+// Comment printing
+// ---------------------------------------------------------------------------
+
+function printComment(node: Annotated<hbs.AST.CommentStatement>, source: string): Doc {
+  const val = node.value;
+  if (isSafeComment(node, source)) {
+    if (val.includes("\n")) {
+      const { open, close } = delims("!--", "--", node.strip);
+      return [open, val, close];
+    }
+    const { open, close } = delims("!-- ", " --", node.strip);
+    return [open, val.trim(), close];
+  }
+  const { open, close } = delims("! ", " ", node.strip);
+  return [open, val.trim(), close];
+}
+
+// ---------------------------------------------------------------------------
+// Block printing
+// ---------------------------------------------------------------------------
 
 type SimpleBlockNode = hbs.AST.PartialBlockStatement | hbs.AST.DecoratorBlock;
 
@@ -282,23 +328,25 @@ function printBlock(
   }
 
   const inverseOpened = isInverseOpened(node);
-  const { open: ot, close: oct } = stripFlags(node.openStrip);
-  const { open: cot, close: cct } = stripFlags(node.closeStrip);
+  const opener = delims(inverseOpened ? "^" : "#", "", node.openStrip);
+  const closer = delims("/", "", node.closeStrip);
 
-  const parts: Doc[] = [];
-
-  if (inverseOpened) {
-    parts.push("{{" + ot + "^", path.call(print, "path"), ...printParams(node, print, path), oct + "}}");
-  } else {
-    parts.push("{{" + ot + "#", path.call(print, "path"), ...printParams(node, print, path), blockParams(node.program), oct + "}}");
+  const parts: Doc[] = [
+    opener.open,
+    path.call(print, "path"),
+    ...printParams(node, print, path),
+  ];
+  if (!inverseOpened) {
+    parts.push(blockParams(node.program));
   }
+  parts.push(opener.close);
 
   const bodyKey = inverseOpened ? "inverse" : "program";
   const bodyNode = inverseOpened ? node.inverse : node.program;
   const hasTrailingElse = !inverseOpened && !!node.inverse;
 
   if (isEmpty(bodyNode) && !hasTrailingElse) {
-    parts.push("{{" + cot + "/", path.call(print, "path"), cct + "}}");
+    parts.push(closer.open, path.call(print, "path"), closer.close);
     return parts;
   }
 
@@ -310,7 +358,7 @@ function printBlock(
     printInverse(node, path, print, parts);
   }
 
-  parts.push("{{" + cot + "/", path.call(print, "path"), cct + "}}");
+  parts.push(closer.open, path.call(print, "path"), closer.close);
   return parts;
 }
 
@@ -325,7 +373,6 @@ function printInverse(
   parts: Doc[],
 ): void {
   if (!block.inverse) return;
-  const { open: iot, close: ict } = stripFlags(block.inverseStrip);
 
   path.call((inversePath: AstPath<any>) => {
     const inverse = inversePath.node as hbs.AST.Program & { chained?: boolean };
@@ -333,11 +380,12 @@ function printInverse(
       // Chained else-if: inverse.body[0] is the nested BlockStatement.
       inversePath.call((blockPath: AstPath<any>) => {
         const chained = blockPath.node as hbs.AST.BlockStatement;
+        const { open, close } = delims("else ", "", block.inverseStrip);
         parts.push(
-          "{{" + iot + "else ",
+          open,
           blockPath.call(print, "path"),
           ...printParams(chained, print, blockPath),
-          ict + "}}",
+          close,
         );
         if (!isEmpty(chained.program)) {
           parts.push(
@@ -350,7 +398,8 @@ function printInverse(
       }, "body", 0);
     } else {
       // Final {{else}} with no condition.
-      parts.push("{{" + iot + "else" + ict + "}}");
+      const { open, close } = delims("else", "", block.inverseStrip);
+      parts.push(open + close);
       if (inverse.body.length) {
         parts.push(...indentedBlock(inversePath.map(print, "body")));
       }
