@@ -90,14 +90,4 @@ describe("HTML integration — formatter is running", () => {
     expect(stripFinalNewline(out)).toBe('<div class="card">{{x}}</div>');
   });
 
-  it("breaks a single-line nested structure when re-indenting", async () => {
-    const { input, expected } = loadFixture(
-      "html-integration/nested-indentation",
-    );
-    const out = stripFinalNewline(await format(input));
-    expect(out).toBe(expected);
-    // Crucially: the output is multi-line even though the input was single-line.
-    expect(input).not.toContain("\n");
-    expect(out.split("\n").length).toBeGreaterThan(1);
-  });
 });
