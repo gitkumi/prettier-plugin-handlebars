@@ -64,6 +64,9 @@ function trimBlockContent(value: string, isFirst: boolean, isLast: boolean): str
 }
 
 function isSimplePathSegment(part: string): boolean {
+  // Handlebars' lexer consumes purely-numeric segments as a NUMBER token, so
+  // array-index segments like `0` must be bracketed (`list.[0]`).
+  if (/^\d+$/.test(part)) return false;
   return /^[\p{L}\p{N}_$-]+$/u.test(part);
 }
 

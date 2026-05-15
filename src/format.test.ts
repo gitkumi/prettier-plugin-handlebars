@@ -1343,6 +1343,201 @@ describe("line ending normalization", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Array index path access
+//
+// Handlebars 4.x requires purely-numeric path segments to be bracketed
+// (`list.[0]`). Bare `list.0` is a parse error. Mixed segments that merely
+// *contain* digits (`list.0a`, `list.foo-bar`) parse fine without brackets;
+// only segments the lexer would consume as a NUMBER token need brackets.
+// ---------------------------------------------------------------------------
+
+describe("array index path access", () => {
+  it("formats a single bracketed index", async () => {
+    await expectFormat("{{list.[0]}}", "{{list.[0]}}\n");
+  });
+
+  it("formats a multi-digit bracketed index", async () => {
+    await expectFormat("{{list.[42]}}", "{{list.[42]}}\n");
+  });
+
+  it("formats an index followed by a property", async () => {
+    await expectFormat("{{list.[0].name}}", "{{list.[0].name}}\n");
+  });
+
+  it("formats consecutive bracketed indices (2D array)", async () => {
+    await expectFormat("{{matrix.[0].[1]}}", "{{matrix.[0].[1]}}\n");
+  });
+
+  it("formats a deep mixed path", async () => {
+    await expectFormat(
+      "{{users.[0].posts.[2].title}}",
+      "{{users.[0].posts.[2].title}}\n",
+    );
+  });
+
+  it("formats a top-level bare bracketed index", async () => {
+    await expectFormat("{{[0]}}", "{{[0]}}\n");
+  });
+
+  it("formats index access with parent traversal", async () => {
+    await expectFormat("{{../list.[0]}}", "{{../list.[0]}}\n");
+  });
+
+  it("formats index access on `this`", async () => {
+    await expectFormat("{{this.[0]}}", "{{this.[0]}}\n");
+  });
+
+  it("formats index access from @root", async () => {
+    await expectFormat("{{@root.users.[0]}}", "{{@root.users.[0]}}\n");
+  });
+
+  it("formats index access from explicit current path", async () => {
+    await expectFormat("{{./list.[0]}}", "{{./list.[0]}}\n");
+  });
+
+  it("formats index access in a triple-stache", async () => {
+    await expectFormat("{{{list.[0]}}}", "{{{list.[0]}}}\n");
+  });
+
+  it("formats index access as a helper positional param", async () => {
+    await expectFormat("{{helper list.[0]}}", "{{helper list.[0]}}\n");
+  });
+
+  it("formats index access as a hash value", async () => {
+    await expectFormat(
+      "{{helper key=list.[0]}}",
+      "{{helper key=list.[0]}}\n",
+    );
+  });
+
+  it("formats index access inside a sub-expression", async () => {
+    await expectFormat(
+      "{{helper (sub list.[0])}}",
+      "{{helper (sub list.[0])}}\n",
+    );
+  });
+
+  it("formats index access as the lookup target", async () => {
+    await expectFormat(
+      '{{lookup list.[0] "name"}}',
+      '{{lookup list.[0] "name"}}\n',
+    );
+  });
+
+  it("formats index access as a partial context (motivating example)", async () => {
+    await expectFormat(
+      "{{> component list.[0]}}",
+      "{{> component list.[0]}}\n",
+    );
+  });
+
+  it("formats index access in a partial with hash", async () => {
+    await expectFormat(
+      "{{> row list.[0] highlight=true}}",
+      "{{> row list.[0] highlight=true}}\n",
+    );
+  });
+
+  it("formats index access as an if-block condition", async () => {
+    await expectFormat(
+      "{{#if list.[0]}}yes{{/if}}",
+      "{{#if list.[0]}}\n  yes\n{{/if}}\n",
+    );
+  });
+
+  it("formats index access as an each-block subject", async () => {
+    await expectFormat(
+      "{{#each list.[0].items}}{{this}}{{/each}}",
+      "{{#each list.[0].items}}\n  {{this}}\n{{/each}}\n",
+    );
+  });
+
+  it("formats index access as a with-block subject", async () => {
+    await expectFormat(
+      "{{#with list.[0]}}{{name}}{{/with}}",
+      "{{#with list.[0]}}\n  {{name}}\n{{/with}}\n",
+    );
+  });
+
+  it("formats index access inside a block with block params", async () => {
+    await expectFormat(
+      "{{#each list.[0] as |item|}}{{item}}{{/each}}",
+      "{{#each list.[0] as |item|}}\n  {{item}}\n{{/each}}\n",
+    );
+  });
+
+  it("preserves mixed alphanumeric segment without brackets (parses unbracketed)", async () => {
+    // `list.0a` is valid unbracketed because `0a` is not a NUMBER token.
+    // Brackets are redundant here, so they should normalize away.
+    await expectFormat("{{list.[0a]}}", "{{list.0a}}\n");
+  });
+
+  it("preserves alphanumeric-starting-with-digit segment without brackets", async () => {
+    await expectFormat("{{list.[1foo]}}", "{{list.1foo}}\n");
+  });
+
+  it("renders same output for partial with index context (motivating example)", async () => {
+    await expectSameRender("{{> row list.[0]}}", {
+      context: { list: [{ name: "first" }, { name: "second" }] },
+      partials: { row: "<li>{{name}}</li>" },
+    });
+  });
+
+  it("renders same output for triple-stache index access", async () => {
+    await expectSameRender("{{{html.[0]}}}", {
+      context: { html: ["<b>a</b>", "<i>b</i>"] },
+    });
+  });
+
+  it("renders same output for deep mixed path", async () => {
+    await expectSameRender("{{users.[0].posts.[1].title}}", {
+      context: {
+        users: [
+          { posts: [{ title: "p0" }, { title: "p1" }] },
+        ],
+      },
+    });
+  });
+
+  it("renders same output for lookup with index path", async () => {
+    await expectSameRender('{{lookup users.[0] "name"}}', {
+      context: { users: [{ name: "Alice" }] },
+    });
+  });
+});
+
+describe("array index path semantics", () => {
+  const templates = [
+    "{{list.[0]}}",
+    "{{list.[42]}}",
+    "{{list.[0].name}}",
+    "{{matrix.[0].[1]}}",
+    "{{users.[0].posts.[2].title}}",
+    "{{[0]}}",
+    "{{../list.[0]}}",
+    "{{this.[0]}}",
+    "{{@root.users.[0]}}",
+    "{{./list.[0]}}",
+    "{{{list.[0]}}}",
+    "{{helper list.[0]}}",
+    "{{helper key=list.[0]}}",
+    "{{helper (sub list.[0])}}",
+    '{{lookup list.[0] "name"}}',
+    "{{> component list.[0]}}",
+    "{{#if list.[0]}}yes{{/if}}",
+    "{{#each list.[0].items}}{{this}}{{/each}}",
+    "{{#with list.[0]}}{{name}}{{/with}}",
+    "{{#each list.[0] as |item|}}{{item}}{{/each}}",
+  ];
+
+  for (const tmpl of templates) {
+    it(`preserves semantics for: ${tmpl}`, async () => {
+      await expectPreservesSemantics(tmpl);
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Partial block built-in `@partial-block`
 // ---------------------------------------------------------------------------
 
