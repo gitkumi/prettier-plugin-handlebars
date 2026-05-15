@@ -1,0 +1,14 @@
+{{! Page header }}
+{{> header}}
+{{#if authenticated}}
+{{#*inline "userBadge"}}<span>{{@root.user.name}}</span>{{/inline}}
+{{{dangerousHtml}}}
+{{#each items as |item idx|}}
+{{~#if item.visible~}}
+{{helper (lookup ../config "formatter") item key=idx}}
+{{~/if~}}
+{{/each}}
+{{else}}
+{{> loginForm action='/login'}}
+{{/if}}
+{{!-- end template --}}

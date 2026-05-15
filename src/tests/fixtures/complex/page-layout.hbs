@@ -1,0 +1,16 @@
+<html>
+<body>
+{{#if user}}
+<h1>Hello, {{user.name}}!</h1>
+{{#each user.posts}}
+<article>
+<h2>{{{this.title}}}</h2>
+<p>{{this.body}}</p>
+{{> postFooter}}
+</article>
+{{/each}}
+{{else}}
+<p>Please log in</p>
+{{/if}}
+</body>
+</html>
