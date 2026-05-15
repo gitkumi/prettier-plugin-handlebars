@@ -96,7 +96,15 @@ function normalizeAst(obj: any): any {
         continue;
       }
       if (k === "value" && obj.type === "ContentStatement") {
-        out[k] = (v as string).replace(/\s+/g, " ").trim();
+        // Prettier's HTML formatter freely inserts and removes whitespace
+        // around tag boundaries while preserving rendered semantics. Strip
+        // whitespace adjacent to `<` and `>` (which is collapsible in HTML
+        // anyway), then collapse remaining whitespace runs. This treats
+        // `<div><img></div>` and `<div>\n  <img>\n</div>` as equivalent.
+        out[k] = (v as string)
+          .replace(/\s*([<>])\s*/g, "$1")
+          .replace(/\s+/g, " ")
+          .trim();
         continue;
       }
       if (k === "value" && obj.type === "CommentStatement") {
