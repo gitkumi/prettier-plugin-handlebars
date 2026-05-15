@@ -36,6 +36,9 @@ describe("HTML integration — attribute handling", () => {
 
   it("preserves a conditional that toggles an attribute", () =>
     expectFixture("html-integration/conditional-attribute-presence"));
+
+  it("preserves whitespace inside an if-block in an attribute value", () =>
+    expectFixture("html-integration/whitespace-in-if"));
 });
 
 describe("HTML integration — void & phrasing elements", () => {

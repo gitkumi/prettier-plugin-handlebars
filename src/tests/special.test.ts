@@ -46,7 +46,7 @@ describe("string literal escaping", () => {
     await expectFixture("escaping/backslashes");
   });
 
-  it("normalizes single-quoted strings to double-quoted", async () => {
+  it("preserves single-quoted strings", async () => {
     await expectFixture("escaping/single-quoted");
   });
 
@@ -65,16 +65,16 @@ describe("string literal escaping", () => {
 });
 
 // ---------------------------------------------------------------------------
-// `{{^x}}A{{else}}B{{/x}}` is rewritten to `{{#x}}B{{else}}A{{/x}}` because
-// the Handlebars parser swaps program/inverse for inverse-opened blocks. The
-// output is semantically identical.
+// `{{^x}}A{{else}}B{{/x}}`: the Handlebars parser swaps program/inverse for
+// inverse-opened blocks, but the plugin no longer reprints expressions —
+// the source is preserved verbatim and semantics still round-trip.
 // ---------------------------------------------------------------------------
 
 describe("inverse opened block with else", () => {
-  it("rewrites to {{#x}}<else>{{else}}<body>{{/x}} and is stable", async () => {
+  it("preserves the source and is stable", async () => {
     const { input } = loadFixture("inverse/opened-with-else");
     const out = await format(input);
-    expect(stripFinalNewline(out)).toBe("{{#x}}els{{else}}inv{{/x}}");
+    expect(stripFinalNewline(out)).toBe(input);
     expectAstEquivalent(input, out);
     expect(await format(out)).toBe(out);
   });

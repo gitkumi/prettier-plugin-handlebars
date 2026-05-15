@@ -155,7 +155,7 @@ describe("comments", () => {
     await expectFixture("comments/multiline-safe");
   });
 
-  it("formats empty comment", async () => {
+  it("preserves empty comment", async () => {
     await expectFixture("comments/empty");
   });
 
@@ -385,11 +385,11 @@ describe("partials", () => {
     await expectFixture("partials/with-hash");
   });
 
-  it("formats dynamic partial", async () => {
+  it("preserves dynamic partial", async () => {
     await expectFixture("partials/dynamic");
   });
 
-  it("formats dynamic partial with context", async () => {
+  it("preserves dynamic partial with context", async () => {
     await expectFixture("partials/dynamic-with-context");
   });
 
@@ -618,8 +618,7 @@ describe("string literal edge cases", () => {
 // ---------------------------------------------------------------------------
 
 describe("additional path expressions", () => {
-  it("formats multiple segment-literal segments", async () => {
-    // [foo] and [bar] are simple identifiers, so brackets are normalized away
+  it("preserves multiple segment-literal segments", async () => {
     await expectFixture("paths/multiple-segment-literals");
   });
 
@@ -816,13 +815,11 @@ describe("array index path access", () => {
     await expectFixture("array-index/in-block-with-block-params");
   });
 
-  it("preserves mixed alphanumeric segment without brackets (parses unbracketed)", async () => {
-    // `list.0a` is valid unbracketed because `0a` is not a NUMBER token.
-    // Brackets are redundant here, so they should normalize away.
+  it("preserves bracketed mixed alphanumeric segment", async () => {
     await expectFixture("array-index/mixed-alphanumeric");
   });
 
-  it("preserves alphanumeric-starting-with-digit segment without brackets", async () => {
+  it("preserves bracketed alphanumeric-starting-with-digit segment", async () => {
     await expectFixture("array-index/digit-first-alphanumeric");
   });
 });
