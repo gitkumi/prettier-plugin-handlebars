@@ -19,6 +19,24 @@ describe("parser placeholdering", () => {
     expect(spans).toContain("\n  {{second}}");
   });
 
+  it("absorbs multiline whitespace around a handlebars-only HTML child", () => {
+    const source = "<div>\n  {{{ children }}}\n</div>";
+    const doc = parseHandlebars(source);
+    const [id] = Object.keys(doc.spans);
+
+    expect(doc.placeholdered).toBe(`<div>${id}</div>`);
+    expect(doc.spans[id]).toBe("\n  {{{ children }}}\n");
+  });
+
+  it("protects empty tags with conditional valued attributes", () => {
+    const source = '<button\n  class="button"\n{{#if id}}id="{{id}}"{{/if}}\n></button>';
+    const doc = parseHandlebars(source);
+    const [id] = Object.keys(doc.spans);
+
+    expect(doc.placeholdered).toBe(id);
+    expect(doc.spans[id]).toBe(source);
+  });
+
   it("captures raw blocks as a single span", () => {
     const source = "{{{{raw}}}}{{notParsed}}{{{{/raw}}}}";
     const doc = parseHandlebars(source);

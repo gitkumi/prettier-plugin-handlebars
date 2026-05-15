@@ -96,24 +96,79 @@ function scanExpressionEnd(source: string, start: number, terminator: string): n
   throw new SyntaxError(`Unclosed expression looking for ${terminator}`);
 }
 
-// Expand each span's start backward to absorb a whitespace-only gap from the
-// previous span. This way the placeholdered source has adjacent placeholders
-// concatenated (`phbs1phbs2`), and the absorbed whitespace comes back during
-// substitution. Whitespace adjacent to HTML markup is left in the source so
-// prettier's HTML formatter can normalize it normally.
+// Expand spans to absorb whitespace that prettier's HTML formatter would
+// otherwise discard while inlining short placeholder text:
+//
+// - whitespace-only gaps between consecutive handlebars spans
+// - multiline whitespace around a standalone triple-stache child between HTML
+//   tags
+//
+// Whitespace next to mixed HTML/text content is still left to prettier's HTML
+// formatter.
 function absorbWhitespaceGaps(source: string, spans: Span[]): Span[] {
   if (spans.length === 0) return spans;
-  const out: Span[] = [{ ...spans[0] }];
-  for (let i = 1; i < spans.length; i++) {
-    const prevEnd = out[out.length - 1].end;
-    const curr = { ...spans[i] };
-    const gap = source.slice(prevEnd, curr.start);
-    if (gap.length > 0 && /^\s+$/.test(gap)) {
-      curr.start = prevEnd;
+  const out = spans.map((span) => ({ ...span }));
+
+  for (let i = 0; i < spans.length; i++) {
+    let runEnd = i;
+    while (
+      runEnd + 1 < spans.length &&
+      isWhitespaceOnly(source.slice(spans[runEnd].end, spans[runEnd + 1].start))
+    ) {
+      runEnd++;
     }
-    out.push(curr);
+
+    const runStartOffset = spans[i].start;
+    const runEndOffset = spans[runEnd].end;
+    const prev = previousNonWhitespaceIndex(source, runStartOffset);
+    const next = nextNonWhitespaceIndex(source, runEndOffset);
+    const leadingGap = source.slice(prev + 1, runStartOffset);
+    const trailingGap = source.slice(runEndOffset, next);
+
+    if (
+      prev >= 0 &&
+      next < source.length &&
+      i === runEnd &&
+      isTripleStacheSpan(source.slice(runStartOffset, runEndOffset)) &&
+      source[prev] === ">" &&
+      source[next] === "<" &&
+      (leadingGap.includes("\n") || trailingGap.includes("\n"))
+    ) {
+      out[i].start = prev + 1;
+      out[runEnd].end = next;
+    }
+
+    i = runEnd;
+  }
+
+  for (let i = 1; i < spans.length; i++) {
+    const prevEnd = out[i - 1].end;
+    const gap = source.slice(prevEnd, out[i].start);
+    if (gap.length > 0 && isWhitespaceOnly(gap)) {
+      out[i].start = prevEnd;
+    }
   }
   return out;
+}
+
+function previousNonWhitespaceIndex(source: string, index: number): number {
+  let i = index - 1;
+  while (i >= 0 && /\s/.test(source[i])) i--;
+  return i;
+}
+
+function nextNonWhitespaceIndex(source: string, index: number): number {
+  let i = index;
+  while (i < source.length && /\s/.test(source[i])) i++;
+  return i;
+}
+
+function isWhitespaceOnly(value: string): boolean {
+  return value.length > 0 && /^\s+$/.test(value);
+}
+
+function isTripleStacheSpan(value: string): boolean {
+  return value.startsWith("{{{") && !value.startsWith("{{{{");
 }
 
 export function parseHandlebars(source: string): HbsDocument {
@@ -121,7 +176,10 @@ export function parseHandlebars(source: string): HbsDocument {
   // for unclosed blocks, mismatched closers, etc.
   Handlebars.parse(source);
 
-  const spans = absorbWhitespaceGaps(source, scanSpans(source));
+  const spans = absorbWhitespaceGaps(
+    source,
+    protectConditionalAttributeEmptyElements(source, scanSpans(source)),
+  );
   const getId = createIdGenerator();
   const spanMap: Record<string, string> = {};
 
@@ -140,6 +198,60 @@ export function parseHandlebars(source: string): HbsDocument {
     placeholdered,
     spans: spanMap,
   };
+}
+
+function protectConditionalAttributeEmptyElements(source: string, spans: Span[]): Span[] {
+  const protectedRegions: Span[] = [];
+
+  for (const span of spans) {
+    if (!source.slice(span.start, span.end).startsWith("{{#")) continue;
+
+    const tagStart = source.lastIndexOf("<", span.start);
+    if (tagStart < 0 || source.slice(tagStart, span.start).includes(">")) continue;
+
+    const tagName = source.slice(tagStart + 1).match(/^([A-Za-z][\w:-]*)\b/)?.[1];
+    if (!tagName) continue;
+
+    const tagEnd = source.indexOf(">", span.end);
+    if (tagEnd < 0) continue;
+
+    const openingTag = source.slice(tagStart, tagEnd + 1);
+    if (!openingTag.includes("{{/")) continue;
+
+    const closeTag = `</${tagName}>`;
+    const closeStart = skipWhitespace(source, tagEnd + 1);
+    if (!source.startsWith(closeTag, closeStart)) continue;
+
+    protectedRegions.push({ start: tagStart, end: closeStart + closeTag.length });
+  }
+
+  if (protectedRegions.length === 0) return spans;
+
+  const mergedRegions = mergeOverlappingSpans(protectedRegions);
+  const unprotectedSpans = spans.filter(
+    (span) => !mergedRegions.some((region) => region.start <= span.start && span.end <= region.end),
+  );
+  return mergeOverlappingSpans([...unprotectedSpans, ...mergedRegions]);
+}
+
+function mergeOverlappingSpans(spans: Span[]): Span[] {
+  const sorted = [...spans].sort((a, b) => a.start - b.start);
+  const out: Span[] = [];
+  for (const span of sorted) {
+    const prev = out[out.length - 1];
+    if (prev && span.start <= prev.end) {
+      prev.end = Math.max(prev.end, span.end);
+    } else {
+      out.push({ ...span });
+    }
+  }
+  return out;
+}
+
+function skipWhitespace(source: string, index: number): number {
+  let i = index;
+  while (i < source.length && /\s/.test(source[i])) i++;
+  return i;
 }
 
 export const parser = {
