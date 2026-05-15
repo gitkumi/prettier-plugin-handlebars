@@ -4,16 +4,14 @@ import type { HbsDocument } from "./parser.ts";
 const { utils } = doc;
 
 // The plugin defers every formatting decision to prettier's HTML formatter.
-// `embed` hands the placeholdered source (handlebars expressions replaced by
-// alphanumeric ids) to the HTML parser, then walks the resulting Doc and
-// splices the original handlebars source back into every placeholder. The
-// plugin never reprints handlebars expressions — output preserves them byte
-// for byte.
+// `embed` hands the placeholdered source to the HTML parser, then walks the
+// resulting Doc and splices the original handlebars source back into every
+// placeholder. The plugin never reprints handlebars expressions — the
+// substituted text preserves the input byte for byte, including whitespace
+// that the parser absorbed between adjacent handlebars expressions.
 
 export const printer = {
   print(): Doc {
-    // `embed` returns a Doc for the single document node, so this fallback
-    // should never run in practice.
     throw new Error("print() should not be called; embed handles the document node.");
   },
 
@@ -39,8 +37,6 @@ export const printer = {
   },
 };
 
-// Walk the Doc returned by the HTML formatter; for each string segment that
-// contains a placeholder id, splice in the original handlebars source.
 function substituteSpans(html: Doc, spans: Record<string, string>): Doc {
   const ids = Object.keys(spans);
   return utils.mapDoc(html, (current) => {

@@ -5,6 +5,12 @@ import Handlebars from "handlebars";
 // so the HTML formatter can format the surrounding markup. The printer then
 // substitutes each placeholder with its original handlebars source verbatim —
 // the plugin never reformats handlebars itself.
+//
+// To preserve whitespace BETWEEN handlebars expressions (which prettier's
+// HTML formatter would otherwise collapse as text content), each span also
+// absorbs any whitespace-only gap between it and the previous span. The
+// placeholdered source ends up with adjacent placeholders concatenated;
+// the absorbed whitespace reappears verbatim during substitution.
 
 export interface HbsDocument {
   type: "document";
@@ -23,12 +29,17 @@ function createIdGenerator(): () => string {
   return () => `phbs${seed}${(counter++).toString(36)}xx`;
 }
 
+interface Span {
+  start: number;
+  end: number;
+}
+
 // Linear scan for every handlebars expression in the source. We do not rely
 // on the Handlebars AST for positions — direct scanning preserves the exact
-// original text (including whitespace-strip flags, internal spacing, and
-// quirky-but-legal forms) byte for byte.
-function scanSpans(source: string): Array<{ start: number; end: number }> {
-  const spans: Array<{ start: number; end: number }> = [];
+// original text (whitespace-strip flags, internal spacing, and quirky-but-
+// legal forms) byte for byte.
+function scanSpans(source: string): Span[] {
+  const spans: Span[] = [];
   let i = 0;
   while (i < source.length) {
     if (source[i] !== "{" || source[i + 1] !== "{") {
@@ -85,12 +96,32 @@ function scanExpressionEnd(source: string, start: number, terminator: string): n
   throw new SyntaxError(`Unclosed expression looking for ${terminator}`);
 }
 
+// Expand each span's start backward to absorb a whitespace-only gap from the
+// previous span. This way the placeholdered source has adjacent placeholders
+// concatenated (`phbs1phbs2`), and the absorbed whitespace comes back during
+// substitution. Whitespace adjacent to HTML markup is left in the source so
+// prettier's HTML formatter can normalize it normally.
+function absorbWhitespaceGaps(source: string, spans: Span[]): Span[] {
+  if (spans.length === 0) return spans;
+  const out: Span[] = [{ ...spans[0] }];
+  for (let i = 1; i < spans.length; i++) {
+    const prevEnd = out[out.length - 1].end;
+    const curr = { ...spans[i] };
+    const gap = source.slice(prevEnd, curr.start);
+    if (gap.length > 0 && /^\s+$/.test(gap)) {
+      curr.start = prevEnd;
+    }
+    out.push(curr);
+  }
+  return out;
+}
+
 export function parseHandlebars(source: string): HbsDocument {
   // Validate syntax via the real handlebars parser; surfaces useful errors
   // for unclosed blocks, mismatched closers, etc.
   Handlebars.parse(source);
 
-  const spans = scanSpans(source);
+  const spans = absorbWhitespaceGaps(source, scanSpans(source));
   const getId = createIdGenerator();
   const spanMap: Record<string, string> = {};
 

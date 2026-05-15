@@ -574,6 +574,10 @@ describe("built-in helpers", () => {
     await expectFixture("built-ins/with-block-params");
   });
 
+  it("formats each block with a partial body", async () => {
+    await expectFixture("built-ins/each");
+  });
+
   it("formats each with else (empty list fallback)", async () => {
     await expectFixture("built-ins/each-with-else");
   });
