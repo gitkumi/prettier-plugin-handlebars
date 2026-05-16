@@ -1,14 +1,21 @@
-import { doc, type AstPath, type Doc } from "prettier";
+import { type AstPath, type Doc } from "prettier";
 import type { HbsDocument } from "./parser.ts";
-
-const { utils } = doc;
+import { substitutePlaceholders } from "./placeholders.ts";
 
 // The plugin defers every formatting decision to prettier's HTML formatter.
 // `embed` hands the placeholdered source to the HTML parser, then walks the
 // resulting Doc and splices the original handlebars source back into every
 // placeholder. The plugin never reprints handlebars expressions — the
 // substituted text preserves the input byte for byte, including whitespace
-// that the parser absorbed between adjacent handlebars expressions.
+// that the parser absorbed between adjacent handlebars expressions. The
+// placeholder protocol itself lives in ./placeholders.ts.
+//
+// The parser coalesces the markup patterns it knows the HTML parser would
+// reject (see computeSpans). Anything that slips through — markup left
+// unbalanced by handlebars in a way the parser did not anticipate — would
+// make textToDoc throw. Rather than surface that as the opaque `print()`
+// guard error, we degrade gracefully: emit the original source verbatim. The
+// document is then a byte-for-byte no-op, which is always correct.
 
 export const printer = {
   print(): Doc {
@@ -27,39 +34,15 @@ export const printer = {
       const node = path.node;
       if (!node || node.type !== "document") return undefined;
 
-      const html = await textToDoc(node.placeholdered, {
-        parser: "html",
-        parentParser: "handlebars",
-      });
-
-      return substituteSpans(html, node.spans);
+      try {
+        const html = await textToDoc(node.placeholdered, {
+          parser: "html",
+          parentParser: "handlebars",
+        });
+        return substitutePlaceholders(html, node.spans);
+      } catch {
+        return node.source;
+      }
     };
   },
 };
-
-function substituteSpans(html: Doc, spans: Record<string, string>): Doc {
-  const ids = Object.keys(spans);
-  return utils.mapDoc(html, (current) => {
-    if (typeof current !== "string") return current;
-    let result: Doc = current;
-    for (const id of ids) {
-      result = utils.mapDoc(result, (segment) => {
-        if (typeof segment !== "string" || !segment.includes(id)) return segment;
-        const parts: Doc[] = [];
-        let rest = segment;
-        while (true) {
-          const idx = rest.indexOf(id);
-          if (idx < 0) {
-            parts.push(rest);
-            break;
-          }
-          if (idx > 0) parts.push(rest.slice(0, idx));
-          parts.push(spans[id]);
-          rest = rest.slice(idx + id.length);
-        }
-        return parts;
-      });
-    }
-    return result;
-  });
-}

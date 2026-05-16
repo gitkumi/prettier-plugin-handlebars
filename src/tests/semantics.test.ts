@@ -1,13 +1,14 @@
-import { describe, it } from "vitest";
-import { semanticGroups } from "./cases.ts";
-import { expectFixturePreservesSemantics } from "./helpers.ts";
+import { describe, expect, it } from "vitest";
+import { semanticCases } from "./cases.ts";
+import { expectAstEquivalent, format, loadFixture } from "./helpers.ts";
 
+// Fixtures the formatter reformats: output is not pinned, but meaning and
+// idempotency must hold.
 describe("semantic preservation", () => {
-  for (const { name, cases } of semanticGroups) {
-    describe(name, () => {
-      it.each(cases)("$fixture", async ({ fixture }) => {
-        await expectFixturePreservesSemantics(fixture);
-      });
-    });
-  }
+  it.each(semanticCases)("$fixture", async ({ fixture }) => {
+    const { input } = loadFixture(fixture);
+    const result = await format(input);
+    expectAstEquivalent(input, result);
+    expect(await format(result)).toBe(result);
+  });
 });

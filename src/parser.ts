@@ -1,10 +1,12 @@
 import Handlebars from "handlebars";
+import { encodePlaceholders, type Span } from "./placeholders.ts";
 
 // Single-node AST. The plugin's only job is to hide handlebars expressions
 // from prettier's HTML formatter (replace each with an alphanumeric placeholder)
 // so the HTML formatter can format the surrounding markup. The printer then
 // substitutes each placeholder with its original handlebars source verbatim —
-// the plugin never reformats handlebars itself.
+// the plugin never reformats handlebars itself. The placeholder protocol
+// (id format and its invariants) lives entirely in ./placeholders.ts.
 //
 // To preserve whitespace BETWEEN handlebars expressions (which prettier's
 // HTML formatter would otherwise collapse as text content), each span also
@@ -17,21 +19,6 @@ export interface HbsDocument {
   source: string;
   placeholdered: string;
   spans: Record<string, string>;
-}
-
-// Placeholder ids must survive prettier's HTML formatter unchanged. Lowercase
-// alphanumeric works in element text, attribute names, attribute values, and
-// custom tag names. The random seed + trailing `xx` makes natural collision
-// with user content astronomically unlikely.
-function createIdGenerator(): () => string {
-  const seed = Math.floor(Math.random() * 0xffffffff).toString(36);
-  let counter = 0;
-  return () => `phbs${seed}${(counter++).toString(36)}xx`;
-}
-
-interface Span {
-  start: number;
-  end: number;
 }
 
 // Linear scan for every handlebars expression in the source. We do not rely
@@ -176,32 +163,56 @@ export function parseHandlebars(source: string): HbsDocument {
   // for unclosed blocks, mismatched closers, etc.
   Handlebars.parse(source);
 
-  const spans = absorbWhitespaceGaps(
-    source,
-    protectConditionalAttributeEmptyElements(source, scanSpans(source)),
-  );
-  const getId = createIdGenerator();
-  const spanMap: Record<string, string> = {};
-
-  // Replace spans in reverse order so earlier indices stay valid.
-  let placeholdered = source;
-  for (let k = spans.length - 1; k >= 0; k--) {
-    const { start, end } = spans[k];
-    const id = getId();
-    spanMap[id] = source.slice(start, end);
-    placeholdered = placeholdered.slice(0, start) + id + placeholdered.slice(end);
-  }
+  const { placeholdered, spans } = encodePlaceholders(source, computeSpans(source));
 
   return {
     type: "document",
     source,
     placeholdered,
-    spans: spanMap,
+    spans,
   };
 }
 
-function protectConditionalAttributeEmptyElements(source: string, spans: Span[]): Span[] {
-  const protectedRegions: Span[] = [];
+// The span pipeline. The order is load-bearing and applies in three stages:
+//
+//  1. scan    — find every handlebars expression verbatim, by offset.
+//  2. protect — coalesce regions the HTML formatter would otherwise mangle or
+//               choke on into a single opaque span, replacing the individual
+//               spans inside them. Two detectors contribute regions:
+//                 - empty elements whose only attributes are conditional
+//                   (`<button {{#if x}}disabled{{/if}}>`)
+//                 - blocks whose literal HTML is not tag-balanced, e.g. a
+//                   block that opens a tag in one branch and closes it in
+//                   another (`{{#if u}}<a>{{else}}<span>{{/if}}…`). The HTML
+//                   parser rejects the unbalanced placeholdered fragment, so
+//                   the whole block is emitted verbatim instead.
+//               Must run before absorb so absorb sees the merged span.
+//  3. absorb  — expand spans over whitespace the HTML formatter would discard.
+//
+// The result is a sorted, non-overlapping span list ready for placeholdering.
+function computeSpans(source: string): Span[] {
+  const scanned = scanSpans(source);
+  const regions = [
+    ...conditionalAttributeEmptyElementRegions(source, scanned),
+    ...unbalancedHtmlBlockRegions(source, scanned),
+  ];
+  return absorbWhitespaceGaps(source, applyProtectedRegions(scanned, regions));
+}
+
+// Replace every span that falls inside a protected region with the region
+// itself (coalescing its pieces into one opaque span), leaving spans outside
+// all regions untouched. Regions may overlap or nest; merging resolves both.
+function applyProtectedRegions(spans: Span[], regions: Span[]): Span[] {
+  if (regions.length === 0) return spans;
+  const merged = mergeOverlappingSpans(regions);
+  const unprotected = spans.filter(
+    (span) => !merged.some((region) => region.start <= span.start && span.end <= region.end),
+  );
+  return mergeOverlappingSpans([...unprotected, ...merged]);
+}
+
+function conditionalAttributeEmptyElementRegions(source: string, spans: Span[]): Span[] {
+  const regions: Span[] = [];
 
   for (const span of spans) {
     if (!source.slice(span.start, span.end).startsWith("{{#")) continue;
@@ -222,16 +233,131 @@ function protectConditionalAttributeEmptyElements(source: string, spans: Span[])
     const closeStart = skipWhitespace(source, tagEnd + 1);
     if (!source.startsWith(closeTag, closeStart)) continue;
 
-    protectedRegions.push({ start: tagStart, end: closeStart + closeTag.length });
+    regions.push({ start: tagStart, end: closeStart + closeTag.length });
   }
 
-  if (protectedRegions.length === 0) return spans;
+  return regions;
+}
 
-  const mergedRegions = mergeOverlappingSpans(protectedRegions);
-  const unprotectedSpans = spans.filter(
-    (span) => !mergedRegions.some((region) => region.start <= span.start && span.end <= region.end),
-  );
-  return mergeOverlappingSpans([...unprotectedSpans, ...mergedRegions]);
+// A handlebars block whose literal HTML (every nested handlebars expression
+// removed) does not form a balanced tag tree. When placeholdered, such a
+// block leaves unbalanced markup that prettier's HTML parser rejects — most
+// commonly the conditional-wrapper idiom, where a tag is opened in one branch
+// and closed in another. The entire block (opener through matching closer) is
+// protected so it round-trips verbatim while the rest of the document still
+// formats.
+function unbalancedHtmlBlockRegions(source: string, spans: Span[]): Span[] {
+  const regions: Span[] = [];
+  const openStack: number[] = [];
+
+  for (let i = 0; i < spans.length; i++) {
+    const kind = blockKind(source.slice(spans[i].start, spans[i].end));
+    if (kind === "open") {
+      openStack.push(i);
+      continue;
+    }
+    if (kind !== "close") continue;
+
+    const openIdx = openStack.pop();
+    if (openIdx === undefined) continue;
+
+    const start = spans[openIdx].start;
+    const end = spans[i].end;
+    if (!isHtmlBalanced(stripSpansWithin(source, spans, start, end))) {
+      regions.push({ start, end });
+    }
+  }
+
+  return regions;
+}
+
+// Classify a span by its role in handlebars block nesting. Raw blocks are
+// captured whole by the scanner, so they are atomic leaves here. `{{^name}}`
+// is an inverse-block opener (paired with `{{/name}}`); a bare `{{^}}` /
+// `{{~^~}}` is only an else-marker and is not a block boundary.
+function blockKind(text: string): "open" | "close" | "leaf" {
+  if (text.startsWith("{{{{")) return "leaf";
+  const marker = text.match(/^\{\{~?([#/^])/);
+  if (!marker) return "leaf";
+  if (marker[1] === "#") return "open";
+  if (marker[1] === "/") return "close";
+  return /^\{\{~?\^\s*[^\s}~]/.test(text) ? "open" : "leaf";
+}
+
+// Source between [start, end) with every span that lies wholly within it
+// removed, leaving only the literal HTML and text the block contributes.
+function stripSpansWithin(source: string, spans: Span[], start: number, end: number): string {
+  let out = "";
+  let cursor = start;
+  for (const span of spans) {
+    if (span.start < start || span.end > end) continue;
+    out += source.slice(cursor, span.start);
+    cursor = span.end;
+  }
+  return out + source.slice(cursor, end);
+}
+
+// HTML void elements never have a closing tag, so an unmatched one does not
+// make a fragment unbalanced.
+const VOID_ELEMENTS = new Set([
+  "area", "base", "br", "col", "embed", "hr", "img", "input",
+  "link", "meta", "param", "source", "track", "wbr",
+]);
+
+// Whether the tags in `html` form a balanced tree: every open tag closed in
+// order, no stray closers. Comments, doctype/CDATA, self-closing tags, void
+// elements, and `>` inside quoted attribute values are all accounted for so
+// the check matches what prettier's HTML parser would accept.
+function isHtmlBalanced(html: string): boolean {
+  const stack: string[] = [];
+  let i = 0;
+  while (i < html.length) {
+    if (html[i] !== "<") {
+      i++;
+      continue;
+    }
+    if (html.startsWith("<!--", i)) {
+      const close = html.indexOf("-->", i + 4);
+      if (close < 0) return false;
+      i = close + 3;
+      continue;
+    }
+    if (html[i + 1] === "!") {
+      const close = html.indexOf(">", i);
+      if (close < 0) return false;
+      i = close + 1;
+      continue;
+    }
+    const closing = html[i + 1] === "/";
+    const nameStart = i + (closing ? 2 : 1);
+    const name = html.slice(nameStart).match(/^([a-zA-Z][\w:-]*)/)?.[1];
+    if (!name) {
+      i++;
+      continue;
+    }
+    let j = nameStart + name.length;
+    let selfClose = false;
+    while (j < html.length && html[j] !== ">") {
+      const ch = html[j];
+      if (ch === '"' || ch === "'") {
+        j++;
+        while (j < html.length && html[j] !== ch) j++;
+      } else if (ch === "/" && html[j + 1] === ">") {
+        selfClose = true;
+      }
+      j++;
+    }
+    if (j >= html.length) return false;
+    i = j + 1;
+
+    const tag = name.toLowerCase();
+    if (closing) {
+      if (stack.pop() !== tag) return false;
+    } else if (!selfClose && !VOID_ELEMENTS.has(tag)) {
+      stack.push(tag);
+    }
+  }
+  return stack.length === 0;
 }
 
 function mergeOverlappingSpans(spans: Span[]): Span[] {

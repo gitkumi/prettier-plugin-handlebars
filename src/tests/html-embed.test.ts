@@ -29,4 +29,36 @@ describe("HTML formatter delegation", () => {
     expect(out).toContain("\n");
     expect(out).toContain("{{x}}");
   });
+
+  // Embedded-language elements (script/style) are reformatted by prettier's
+  // JS/CSS sub-printers, which rewrites the literal text — so these cannot be
+  // pinned as format/semantic/render fixtures (AST and render equivalence both
+  // operate on the literal string). The contract that holds is narrower: the
+  // handlebars expression survives verbatim and the result is idempotent.
+  it("preserves a handlebars expression inside <script> and stays idempotent", async () => {
+    const input = "<script>\nvar count = {{count}};\nrender(count);\n</script>";
+    const out = await format(input);
+    expect(out).toContain("{{count}}");
+    expect(await format(out)).toBe(out);
+  });
+
+  it("preserves a handlebars expression inside <style> and stays idempotent", async () => {
+    const input = "<style>\n.a{color:{{color}};}\n</style>";
+    const out = await format(input);
+    expect(out).toContain("{{color}}");
+    expect(await format(out)).toBe(out);
+  });
+
+  // The conditional-wrapper idiom opens a tag in one branch and closes it in
+  // another; placeholdered, that markup is unbalanced and prettier's HTML
+  // parser would reject it. The parser coalesces each such block so the file
+  // formats instead of crashing with the opaque print() guard error.
+  it("formats around a conditional tag-wrapper block instead of crashing", async () => {
+    const input =
+      '<div class="wrap">{{#if url}}<a href="{{url}}">{{else}}<span>{{/if}}{{label}}{{#if url}}</a>{{else}}</span>{{/if}}</div>';
+    const out = await format(input);
+    expect(out).toContain('{{#if url}}<a href="{{url}}">{{else}}<span>{{/if}}');
+    expect(out).toContain("{{#if url}}</a>{{else}}</span>{{/if}}");
+    expect(await format(out)).toBe(out);
+  });
 });

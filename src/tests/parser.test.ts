@@ -37,6 +37,22 @@ describe("parser placeholdering", () => {
     expect(doc.spans[id]).toBe(source);
   });
 
+  it("protects a block whose branches leave HTML unbalanced", () => {
+    const source = "{{#if url}}<a href={{url}}>{{else}}<span>{{/if}}";
+    const doc = parseHandlebars(source);
+    const [id] = Object.keys(doc.spans);
+
+    expect(doc.placeholdered).toBe(id);
+    expect(doc.spans[id]).toBe(source);
+  });
+
+  it("leaves a block with balanced HTML as individual spans", () => {
+    const doc = parseHandlebars("{{#if u}}<span>{{u}}</span>{{/if}}");
+
+    expect(Object.keys(doc.spans).length).toBeGreaterThan(1);
+    expect(doc.placeholdered).toContain("<span>");
+  });
+
   it("captures raw blocks as a single span", () => {
     const source = "{{{{raw}}}}{{notParsed}}{{{{/raw}}}}";
     const doc = parseHandlebars(source);

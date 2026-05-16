@@ -1,9 +1,9 @@
 import { describe, it } from "vitest";
-import { exactFormatGroups } from "./cases.ts";
+import { formatGroups } from "./cases.ts";
 import { expectFixture } from "./helpers.ts";
 
 describe("exact fixture formatting", () => {
-  for (const { name, cases } of exactFormatGroups) {
+  for (const { name, cases } of formatGroups) {
     describe(name, () => {
       it.each(cases)("$fixture", async ({ fixture }) => {
         await expectFixture(fixture);

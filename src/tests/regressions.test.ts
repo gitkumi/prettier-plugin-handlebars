@@ -1,12 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { complexCases, regressionFixtures } from "./cases.ts";
-import {
-  expectAstEquivalent,
-  expectPreservesSemantics,
-  format,
-  loadFixture,
-  stripFinalNewline,
-} from "./helpers.ts";
+import { expectAstEquivalent, expectPreservesSemantics, format, loadFixture } from "./helpers.ts";
+
+// Per-fixture format/semantic/idempotency coverage is driven from disk by the
+// format and semantics suites. This file holds only bespoke assertions that
+// check specific constructs survive — things a generic fixture run cannot say.
 
 describe("edge cases", () => {
   it("handles empty input", async () => {
@@ -23,13 +20,6 @@ describe("edge cases", () => {
 });
 
 describe("complex templates", () => {
-  it.each(complexCases)("$fixture", async ({ fixture }) => {
-    const { input } = loadFixture(fixture);
-    const result = await format(input);
-    expectAstEquivalent(input, result);
-    expect(await format(result)).toBe(result);
-  });
-
   it("keeps important page layout handlebars constructs", async () => {
     const { input } = loadFixture("complex/page-layout");
     const result = await format(input);
@@ -47,14 +37,6 @@ describe("complex templates", () => {
 });
 
 describe("special syntax regressions", () => {
-  it.each(regressionFixtures)("preserves $fixture source and stability", async ({ fixture }) => {
-    const { input } = loadFixture(fixture);
-    const out = await format(input);
-    expect(stripFinalNewline(out)).toBe(input);
-    expectAstEquivalent(input, out);
-    expect(await format(out)).toBe(out);
-  });
-
   it("preserves a lone double quote string literal semantically", async () => {
     const { input } = loadFixture("escaping/lone-double-quote");
     await expectPreservesSemantics(input);
