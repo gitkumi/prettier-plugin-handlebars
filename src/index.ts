@@ -1,5 +1,5 @@
-import { parser } from "./parser.ts";
-import { printer } from "./printer.ts";
+import { parser } from "./parser.ts"
+import { printer } from "./printer.ts"
 
 export const languages = [
   {
@@ -8,12 +8,12 @@ export const languages = [
     extensions: [".hbs", ".handlebars"],
     vscodeLanguageIds: ["handlebars"],
   },
-];
+]
 
 export const parsers = {
   handlebars: parser,
-};
+}
 
 export const printers = {
   "handlebars-ast": printer,
-};
+}

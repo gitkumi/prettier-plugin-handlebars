@@ -1,394 +1,166 @@
-import Handlebars from "handlebars";
-import { encodePlaceholders, type Span } from "./placeholders.ts";
+import Handlebars from "handlebars"
+import { encodePlaceholders, type Span } from "./placeholders.ts"
 
-// Single-node AST. The plugin's only job is to hide handlebars expressions
-// from prettier's HTML formatter (replace each with an alphanumeric placeholder)
-// so the HTML formatter can format the surrounding markup. The printer then
-// substitutes each placeholder with its original handlebars source verbatim —
-// the plugin never reformats handlebars itself. The placeholder protocol
-// (id format and its invariants) lives entirely in ./placeholders.ts.
+// The whole plugin: hide every handlebars construct behind an opaque
+// placeholder, let prettier's HTML formatter format the markup that's left,
+// then put the original handlebars source back verbatim (see ./printer.ts).
+// The plugin never reformats handlebars itself.
 //
-// To preserve whitespace BETWEEN handlebars expressions (which prettier's
-// HTML formatter would otherwise collapse as text content), each span also
-// absorbs any whitespace-only gap between it and the previous span. The
-// placeholdered source ends up with adjacent placeholders concatenated;
-// the absorbed whitespace reappears verbatim during substitution.
+// This parser does exactly two things: validate the template (so broken
+// templates surface a real error instead of mangled output) and scan every
+// handlebars construct into a span. No HTML is inspected here — when
+// placeholdering happens to leave markup the HTML parser can't accept (a tag
+// opened in one block branch and closed in another, say), the printer catches
+// it and emits the source untouched. That verbatim fallback is what lets this
+// stay minimal.
 
 export interface HbsDocument {
-  type: "document";
-  source: string;
-  placeholdered: string;
-  spans: Record<string, string>;
-}
-
-// Linear scan for every handlebars expression in the source. We do not rely
-// on the Handlebars AST for positions — direct scanning preserves the exact
-// original text (whitespace-strip flags, internal spacing, and quirky-but-
-// legal forms) byte for byte.
-function scanSpans(source: string): Span[] {
-  const spans: Span[] = [];
-  let i = 0;
-  while (i < source.length) {
-    if (source[i] !== "{" || source[i + 1] !== "{") {
-      i++;
-      continue;
-    }
-    const start = i;
-    let end: number;
-    if (source.startsWith("{{{{", i)) {
-      // Raw block: {{{{name}}}}...{{{{/name}}}} — the body between the two
-      // delimiters is verbatim source (handlebars does not parse it), so the
-      // entire construct is captured as a single span.
-      const openEnd = source.indexOf("}}}}", i + 4);
-      if (openEnd < 0) throw new SyntaxError("Unclosed raw block opener at " + i);
-      const name = source.slice(i + 4, openEnd).trim().split(/\s+/)[0];
-      const closeMarker = `{{{{/${name}}}}}`;
-      const closeStart = source.indexOf(closeMarker, openEnd + 4);
-      if (closeStart < 0) throw new SyntaxError(`Unclosed raw block: ${name}`);
-      end = closeStart + closeMarker.length;
-    } else if (source.startsWith("{{!--", i)) {
-      const closeIdx = source.indexOf("--}}", i + 5);
-      if (closeIdx < 0) throw new SyntaxError("Unclosed comment at " + i);
-      end = closeIdx + 4;
-    } else if (source.startsWith("{{{", i)) {
-      end = scanExpressionEnd(source, i + 3, "}}}");
-    } else {
-      end = scanExpressionEnd(source, i + 2, "}}");
-    }
-    spans.push({ start, end });
-    i = end;
-  }
-  return spans;
-}
-
-// Scan forward from `start` to `terminator`, skipping over string literals
-// (which may legally contain `}}` and would otherwise look like a closer).
-function scanExpressionEnd(source: string, start: number, terminator: string): number {
-  let i = start;
-  while (i < source.length) {
-    const ch = source[i];
-    if (ch === '"' || ch === "'") {
-      const q = ch;
-      i++;
-      while (i < source.length && source[i] !== q) {
-        if (source[i] === "\\") i++;
-        i++;
-      }
-      i++;
-      continue;
-    }
-    if (source.startsWith(terminator, i)) return i + terminator.length;
-    i++;
-  }
-  throw new SyntaxError(`Unclosed expression looking for ${terminator}`);
-}
-
-// Expand spans to absorb whitespace that prettier's HTML formatter would
-// otherwise discard while inlining short placeholder text:
-//
-// - whitespace-only gaps between consecutive handlebars spans
-// - multiline whitespace around a standalone triple-stache child between HTML
-//   tags
-//
-// Whitespace next to mixed HTML/text content is still left to prettier's HTML
-// formatter.
-function absorbWhitespaceGaps(source: string, spans: Span[]): Span[] {
-  if (spans.length === 0) return spans;
-  const out = spans.map((span) => ({ ...span }));
-
-  for (let i = 0; i < spans.length; i++) {
-    let runEnd = i;
-    while (
-      runEnd + 1 < spans.length &&
-      isWhitespaceOnly(source.slice(spans[runEnd].end, spans[runEnd + 1].start))
-    ) {
-      runEnd++;
-    }
-
-    const runStartOffset = spans[i].start;
-    const runEndOffset = spans[runEnd].end;
-    const prev = previousNonWhitespaceIndex(source, runStartOffset);
-    const next = nextNonWhitespaceIndex(source, runEndOffset);
-    const leadingGap = source.slice(prev + 1, runStartOffset);
-    const trailingGap = source.slice(runEndOffset, next);
-
-    if (
-      prev >= 0 &&
-      next < source.length &&
-      i === runEnd &&
-      isTripleStacheSpan(source.slice(runStartOffset, runEndOffset)) &&
-      source[prev] === ">" &&
-      source[next] === "<" &&
-      (leadingGap.includes("\n") || trailingGap.includes("\n"))
-    ) {
-      out[i].start = prev + 1;
-      out[runEnd].end = next;
-    }
-
-    i = runEnd;
-  }
-
-  for (let i = 1; i < spans.length; i++) {
-    const prevEnd = out[i - 1].end;
-    const gap = source.slice(prevEnd, out[i].start);
-    if (gap.length > 0 && isWhitespaceOnly(gap)) {
-      out[i].start = prevEnd;
-    }
-  }
-  return out;
-}
-
-function previousNonWhitespaceIndex(source: string, index: number): number {
-  let i = index - 1;
-  while (i >= 0 && /\s/.test(source[i])) i--;
-  return i;
-}
-
-function nextNonWhitespaceIndex(source: string, index: number): number {
-  let i = index;
-  while (i < source.length && /\s/.test(source[i])) i++;
-  return i;
-}
-
-function isWhitespaceOnly(value: string): boolean {
-  return value.length > 0 && /^\s+$/.test(value);
-}
-
-function isTripleStacheSpan(value: string): boolean {
-  return value.startsWith("{{{") && !value.startsWith("{{{{");
+  type: "document"
+  source: string
+  placeholdered: string
+  spans: Record<string, string>
 }
 
 export function parseHandlebars(source: string): HbsDocument {
-  // Validate syntax via the real handlebars parser; surfaces useful errors
-  // for unclosed blocks, mismatched closers, etc.
-  Handlebars.parse(source);
-
-  const { placeholdered, spans } = encodePlaceholders(source, computeSpans(source));
-
-  return {
-    type: "document",
-    source,
-    placeholdered,
-    spans,
-  };
+  Handlebars.parse(source)
+  const { placeholdered, spans } = encodePlaceholders(source, scanSpans(source))
+  return { type: "document", source, placeholdered, spans }
 }
 
-// The span pipeline. The order is load-bearing and applies in three stages:
-//
-//  1. scan    — find every handlebars expression verbatim, by offset.
-//  2. protect — coalesce regions the HTML formatter would otherwise mangle or
-//               choke on into a single opaque span, replacing the individual
-//               spans inside them. Two detectors contribute regions:
-//                 - empty elements whose only attributes are conditional
-//                   (`<button {{#if x}}disabled{{/if}}>`)
-//                 - blocks whose literal HTML is not tag-balanced, e.g. a
-//                   block that opens a tag in one branch and closes it in
-//                   another (`{{#if u}}<a>{{else}}<span>{{/if}}…`). The HTML
-//                   parser rejects the unbalanced placeholdered fragment, so
-//                   the whole block is emitted verbatim instead.
-//               Must run before absorb so absorb sees the merged span.
-//  3. absorb  — expand spans over whitespace the HTML formatter would discard.
-//
-// The result is a sorted, non-overlapping span list ready for placeholdering.
-function computeSpans(source: string): Span[] {
-  const scanned = scanSpans(source);
-  const regions = [
-    ...conditionalAttributeEmptyElementRegions(source, scanned),
-    ...unbalancedHtmlBlockRegions(source, scanned),
-  ];
-  return absorbWhitespaceGaps(source, applyProtectedRegions(scanned, regions));
+// Find every handlebars construct verbatim, by offset. We scan the raw text
+// rather than walk the Handlebars AST so the original bytes (whitespace-control
+// markers, internal spacing, quirky-but-legal forms) round-trip exactly.
+function scanSpans(source: string): Span[] {
+  const spans: Span[] = []
+  let i = 0
+  while (i < source.length) {
+    if (source[i] !== "{" || source[i + 1] !== "{") {
+      i++
+      continue
+    }
+    // An odd run of backslashes immediately before `{{` escapes it: handlebars
+    // treats `\{{x}}` as the literal text `{{x}}`, not an expression (while
+    // `\\{{x}}` is a literal backslash followed by a real expression). Skip the
+    // escaped opener so it stays inert text — scanning it would mis-span valid
+    // content and throw on an unterminated `\{{`.
+    let backslashes = 0
+    while (source[i - 1 - backslashes] === "\\") backslashes++
+    if (backslashes % 2 === 1) {
+      i += 2
+      continue
+    }
+    const span = scanOne(source, i)
+    spans.push(span)
+    i = span.end
+  }
+  return spans
 }
 
-// Replace every span that falls inside a protected region with the region
-// itself (coalescing its pieces into one opaque span), leaving spans outside
-// all regions untouched. Regions may overlap or nest; merging resolves both.
-function applyProtectedRegions(spans: Span[], regions: Span[]): Span[] {
-  if (regions.length === 0) return spans;
-  const merged = mergeOverlappingSpans(regions);
-  const unprotected = spans.filter(
-    (span) => !merged.some((region) => region.start <= span.start && span.end <= region.end),
-  );
-  return mergeOverlappingSpans([...unprotected, ...merged]);
-}
-
-function conditionalAttributeEmptyElementRegions(source: string, spans: Span[]): Span[] {
-  const regions: Span[] = [];
-
-  for (const span of spans) {
-    if (!source.slice(span.start, span.end).startsWith("{{#")) continue;
-
-    const tagStart = source.lastIndexOf("<", span.start);
-    if (tagStart < 0 || source.slice(tagStart, span.start).includes(">")) continue;
-
-    const tagName = source.slice(tagStart + 1).match(/^([A-Za-z][\w:-]*)\b/)?.[1];
-    if (!tagName) continue;
-
-    const tagEnd = source.indexOf(">", span.end);
-    if (tagEnd < 0) continue;
-
-    const openingTag = source.slice(tagStart, tagEnd + 1);
-    if (!openingTag.includes("{{/")) continue;
-
-    const closeTag = `</${tagName}>`;
-    const closeStart = skipWhitespace(source, tagEnd + 1);
-    if (!source.startsWith(closeTag, closeStart)) continue;
-
-    regions.push({ start: tagStart, end: closeStart + closeTag.length });
+function scanOne(source: string, start: number): Span {
+  // {{{{raw}}}} ... {{{{/raw}}}} — handlebars does not parse the body, so the
+  // whole construct (opener, verbatim body, closer) is a single span.
+  if (source.startsWith("{{{{", start)) {
+    const openEnd = source.indexOf("}}}}", start + 4)
+    if (openEnd < 0)
+      throw new SyntaxError(`Unclosed raw block opener at ${start}`)
+    const name = source
+      .slice(start + 4, openEnd)
+      .trim()
+      .split(/\s+/)[0]
+    const close = `{{{{/${name}}}}}`
+    const closeStart = source.indexOf(close, openEnd + 4)
+    if (closeStart < 0) throw new SyntaxError(`Unclosed raw block: ${name}`)
+    return { start, end: closeStart + close.length }
   }
 
-  return regions;
-}
+  // Skip the optional leading strip marker so the comment/triple checks below
+  // see the real opener (`{{~!--` and `{{!--` are the same construct).
+  const body = source.startsWith("{{~", start) ? start + 3 : start + 2
 
-// A handlebars block whose literal HTML (every nested handlebars expression
-// removed) does not form a balanced tag tree. When placeholdered, such a
-// block leaves unbalanced markup that prettier's HTML parser rejects — most
-// commonly the conditional-wrapper idiom, where a tag is opened in one branch
-// and closed in another. The entire block (opener through matching closer) is
-// protected so it round-trips verbatim while the rest of the document still
-// formats.
-function unbalancedHtmlBlockRegions(source: string, spans: Span[]): Span[] {
-  const regions: Span[] = [];
-  const openStack: number[] = [];
-
-  for (let i = 0; i < spans.length; i++) {
-    const kind = blockKind(source.slice(spans[i].start, spans[i].end));
-    if (kind === "open") {
-      openStack.push(i);
-      continue;
-    }
-    if (kind !== "close") continue;
-
-    const openIdx = openStack.pop();
-    if (openIdx === undefined) continue;
-
-    const start = spans[openIdx].start;
-    const end = spans[i].end;
-    if (!isHtmlBalanced(stripSpansWithin(source, spans, start, end))) {
-      regions.push({ start, end });
-    }
+  // {{!-- ... --}} block comment. Its body is opaque text that may contain
+  // `}}` or HTML, so it terminates strictly on the comment closer and is never
+  // treated as expression syntax.
+  if (source.startsWith("!--", body)) {
+    const end = endOfFirst(source, ["--}}", "--~}}"], body + 3)
+    if (end < 0) throw new SyntaxError(`Unclosed comment at ${start}`)
+    return { start, end }
   }
 
-  return regions;
-}
-
-// Classify a span by its role in handlebars block nesting. Raw blocks are
-// captured whole by the scanner, so they are atomic leaves here. `{{^name}}`
-// is an inverse-block opener (paired with `{{/name}}`); a bare `{{^}}` /
-// `{{~^~}}` is only an else-marker and is not a block boundary.
-function blockKind(text: string): "open" | "close" | "leaf" {
-  if (text.startsWith("{{{{")) return "leaf";
-  const marker = text.match(/^\{\{~?([#/^])/);
-  if (!marker) return "leaf";
-  if (marker[1] === "#") return "open";
-  if (marker[1] === "/") return "close";
-  return /^\{\{~?\^\s*[^\s}~]/.test(text) ? "open" : "leaf";
-}
-
-// Source between [start, end) with every span that lies wholly within it
-// removed, leaving only the literal HTML and text the block contributes.
-function stripSpansWithin(source: string, spans: Span[], start: number, end: number): string {
-  let out = "";
-  let cursor = start;
-  for (const span of spans) {
-    if (span.start < start || span.end > end) continue;
-    out += source.slice(cursor, span.start);
-    cursor = span.end;
+  // {{! ... }} short comment — cannot contain `}}` per the handlebars spec.
+  if (source[body] === "!") {
+    const end = endOfFirst(source, ["}}", "~}}"], body + 1)
+    if (end < 0) throw new SyntaxError(`Unclosed comment at ${start}`)
+    return { start, end }
   }
-  return out + source.slice(cursor, end);
+
+  // {{{ ... }}} unescaped expression.
+  if (source.startsWith("{{{", start)) {
+    return { start, end: scanExpressionEnd(source, start + 3, "}}}") }
+  }
+
+  // {{ ... }} / {{~ ... ~}} — every other mustache, block boundary, partial.
+  return { start, end: scanExpressionEnd(source, body, "}}") }
 }
 
-// HTML void elements never have a closing tag, so an unmatched one does not
-// make a fragment unbalanced.
-const VOID_ELEMENTS = new Set([
-  "area", "base", "br", "col", "embed", "hr", "img", "input",
-  "link", "meta", "param", "source", "track", "wbr",
-]);
+// End offset (just past the terminator) of whichever `terminators` entry
+// starts earliest at or after `from`; -1 if none occur.
+function endOfFirst(
+  source: string,
+  terminators: string[],
+  from: number,
+): number {
+  let bestStart = -1
+  let bestEnd = -1
+  for (const terminator of terminators) {
+    const at = source.indexOf(terminator, from)
+    if (at >= 0 && (bestStart < 0 || at < bestStart)) {
+      bestStart = at
+      bestEnd = at + terminator.length
+    }
+  }
+  return bestEnd
+}
 
-// Whether the tags in `html` form a balanced tree: every open tag closed in
-// order, no stray closers. Comments, doctype/CDATA, self-closing tags, void
-// elements, and `>` inside quoted attribute values are all accounted for so
-// the check matches what prettier's HTML parser would accept.
-function isHtmlBalanced(html: string): boolean {
-  const stack: string[] = [];
-  let i = 0;
-  while (i < html.length) {
-    if (html[i] !== "<") {
-      i++;
-      continue;
-    }
-    if (html.startsWith("<!--", i)) {
-      const close = html.indexOf("-->", i + 4);
-      if (close < 0) return false;
-      i = close + 3;
-      continue;
-    }
-    if (html[i + 1] === "!") {
-      const close = html.indexOf(">", i);
-      if (close < 0) return false;
-      i = close + 1;
-      continue;
-    }
-    const closing = html[i + 1] === "/";
-    const nameStart = i + (closing ? 2 : 1);
-    const name = html.slice(nameStart).match(/^([a-zA-Z][\w:-]*)/)?.[1];
-    if (!name) {
-      i++;
-      continue;
-    }
-    let j = nameStart + name.length;
-    let selfClose = false;
-    while (j < html.length && html[j] !== ">") {
-      const ch = html[j];
-      if (ch === '"' || ch === "'") {
-        j++;
-        while (j < html.length && html[j] !== ch) j++;
-      } else if (ch === "/" && html[j + 1] === ">") {
-        selfClose = true;
+// Scan forward to `terminator`, skipping string and bracketed path literals so
+// a `}}` (or `}}}`) inside either form does not look like the closer.
+function scanExpressionEnd(
+  source: string,
+  start: number,
+  terminator: string,
+): number {
+  let i = start
+  while (i < source.length) {
+    const ch = source[i]
+    if (ch === '"' || ch === "'") {
+      i++
+      while (i < source.length && source[i] !== ch) {
+        if (source[i] === "\\") i++
+        i++
       }
-      j++;
+      i++
+      continue
     }
-    if (j >= html.length) return false;
-    i = j + 1;
-
-    const tag = name.toLowerCase();
-    if (closing) {
-      if (stack.pop() !== tag) return false;
-    } else if (!selfClose && !VOID_ELEMENTS.has(tag)) {
-      stack.push(tag);
+    if (ch === "[") {
+      i++
+      while (i < source.length && source[i] !== "]") i++
+      i++
+      continue
     }
+    if (source.startsWith(terminator, i)) return i + terminator.length
+    i++
   }
-  return stack.length === 0;
-}
-
-function mergeOverlappingSpans(spans: Span[]): Span[] {
-  const sorted = [...spans].sort((a, b) => a.start - b.start);
-  const out: Span[] = [];
-  for (const span of sorted) {
-    const prev = out[out.length - 1];
-    if (prev && span.start <= prev.end) {
-      prev.end = Math.max(prev.end, span.end);
-    } else {
-      out.push({ ...span });
-    }
-  }
-  return out;
-}
-
-function skipWhitespace(source: string, index: number): number {
-  let i = index;
-  while (i < source.length && /\s/.test(source[i])) i++;
-  return i;
+  throw new SyntaxError(`Unclosed expression looking for ${terminator}`)
 }
 
 export const parser = {
   parse(text: string): HbsDocument {
-    return parseHandlebars(text);
+    return parseHandlebars(text)
   },
   astFormat: "handlebars-ast",
   locStart(_node: HbsDocument): number {
-    return 0;
+    return 0
   },
   locEnd(node: HbsDocument): number {
-    return node.source.length;
+    return node.source.length
   },
-};
+}

@@ -1,0 +1,6 @@
+node_modules/
+dist/
+pnpm-lock.yaml
+
+# Test fixtures are hand-authored inputs/expected outputs — never reformat them.
+src/tests/fixtures/

@@ -1,0 +1,8 @@
+<ol class="leaderboard">
+  {{#each players}}
+  <li data-rank="{{@index}}">
+    {{@key}}: {{name}} {{#if @first}}(top){{/if}}{{#if @last}}(last){{/if}} —
+    {{@root.season}}
+  </li>
+  {{/each}}
+</ol>

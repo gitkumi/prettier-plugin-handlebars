@@ -1,0 +1,9 @@
+<table class="grid">
+  <tbody>
+    {{#each rows as |row i|}}
+    <tr data-row="{{i}}">
+      <td>{{row.label}}</td>
+    </tr>
+    {{/each}}
+  </tbody>
+</table>

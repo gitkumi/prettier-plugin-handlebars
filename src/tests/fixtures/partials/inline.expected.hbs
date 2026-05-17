@@ -1,0 +1,11 @@
+{{#*inline "productRow"}}
+<tr>
+  <td>{{name}}</td>
+  <td>{{price}}</td>
+</tr>
+{{/inline}}
+<table class="catalog">
+  <tbody>
+    {{#each products}}{{> productRow}}{{/each}}
+  </tbody>
+</table>
