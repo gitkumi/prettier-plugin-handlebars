@@ -29,6 +29,11 @@ const { utils } = doc
 const ID_PREFIX = "phbs"
 const ID_SUFFIX = "xx"
 const MIN_COUNTER_WIDTH = 4
+// Collision is astronomically unlikely (random seed plus constant affixes),
+// and every retry mixes in `attempt` for fresh entropy. This bound exists
+// only so a pathological or adversarial source fails loudly with a clear
+// error instead of looping forever.
+const MAX_ID_ATTEMPTS = 1000
 
 export interface Span {
   start: number
@@ -79,8 +84,7 @@ function makePlaceholderIdFactory(
   count: number,
   width: number,
 ): (index: number) => string {
-  let attempt = 0
-  while (true) {
+  for (let attempt = 0; attempt < MAX_ID_ATTEMPTS; attempt++) {
     const randomSeed = Math.floor(Math.random() * 0xffffffff).toString(36)
     const seed = attempt === 0 ? randomSeed : randomSeed + attempt.toString(36)
     const makeId = (index: number): string =>
@@ -94,8 +98,10 @@ function makePlaceholderIdFactory(
       }
     }
     if (!collides) return makeId
-    attempt++
   }
+  throw new Error(
+    `Could not generate collision-free placeholder ids after ${MAX_ID_ATTEMPTS} attempts`,
+  )
 }
 
 // Replace every placeholder id in a formatted Doc with its original handlebars

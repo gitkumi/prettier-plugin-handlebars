@@ -1,0 +1,16 @@
+<style>
+  .card {
+    color: {{fg}};
+    background: {{bg}};
+    margin: 0;
+  }
+  .card > .title {
+    font-weight: bold;
+    font-size: {{~ size ~}};
+  }
+  @media (max-width: {{breakpoint}}px) {
+    .card {
+      padding: 4px;
+    }
+  }
+</style>

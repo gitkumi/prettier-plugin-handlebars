@@ -13,6 +13,15 @@ import { encodePlaceholders, type Span } from "./placeholders.ts"
 // opened in one block branch and closed in another, say), the printer catches
 // it and emits the source untouched. That verbatim fallback is what lets this
 // stay minimal.
+//
+// Boundary worth knowing: the printer's verbatim fallback covers only
+// HTML-formatting failures. Anything thrown here (in the scanner) propagates
+// as a hard error with no verbatim net. That is intentional for genuinely
+// invalid templates — Handlebars.parse runs first and rejects those — but it
+// also means the scanner must stay in agreement with handlebars' own lexer:
+// if it threw on a construct Handlebars.parse accepted, a valid template
+// would fail outright instead of degrading. New construct handling here is
+// held to that bar.
 
 export interface HbsDocument {
   type: "document"
@@ -60,9 +69,12 @@ function scanOne(source: string, start: number): Span {
   // {{{{raw}}}} ... {{{{/raw}}}} — handlebars does not parse the body, so the
   // whole construct (opener, verbatim body, closer) is a single span.
   if (source.startsWith("{{{{", start)) {
-    const openEnd = source.indexOf("}}}}", start + 4)
-    if (openEnd < 0)
-      throw new SyntaxError(`Unclosed raw block opener at ${start}`)
+    // Locate the opener terminator the same way scanExpressionEnd does —
+    // skipping string and bracketed literals — so a `}}}}` inside an argument
+    // string (e.g. {{{{raw x="}}}}"}}}}) is not mistaken for the end of the
+    // opener. scanExpressionEnd returns the offset just past `}}}}` and throws
+    // if the opener is never terminated.
+    const openEnd = scanExpressionEnd(source, start + 4, "}}}}") - 4
     const name = source
       .slice(start + 4, openEnd)
       .trim()

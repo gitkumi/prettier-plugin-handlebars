@@ -7,10 +7,13 @@ const { hardline, trim } = doc.builders
 // The plugin defers every formatting decision to prettier's HTML formatter.
 // `embed` hands the placeholdered source to the HTML parser, then walks the
 // resulting Doc and splices the original handlebars source back into every
-// placeholder. The plugin never reprints handlebars expressions — the
-// substituted text preserves the input byte for byte, including whitespace
-// that the parser absorbed between adjacent handlebars expressions. The
-// placeholder protocol itself lives in ./placeholders.ts.
+// placeholder. "Verbatim" is scoped precisely: the plugin never reprints a
+// handlebars expression, so each expression's own bytes (internal spacing,
+// whitespace-control markers, quirky-but-legal forms) round-trip exactly. The
+// text *around* expressions is not verbatim — it is HTML, formatted like any
+// other markup. In particular the HTML formatter collapses whitespace between
+// adjacent expressions just as it would between words (`{{a}}\n\n{{b}}` ->
+// `{{a}} {{b}}`). The placeholder protocol itself lives in ./placeholders.ts.
 //
 // The parser never inspects HTML. When placeholdering leaves markup the HTML
 // parser can't accept (a tag opened in one block branch and closed in
@@ -59,6 +62,12 @@ function withFinalNewline(formatted: Doc, source: string): Doc {
   return source.trim() === "" ? "" : [formatted, trim, hardline]
 }
 
+// The verbatim fallback is deliberately a byte-for-byte echo of the source
+// except for the trailing newline. Internal CRLF is preserved on purpose:
+// once HTML formatting has failed there is no parsed structure to safely
+// rewrite line endings against, so a no-op is the only always-correct output.
+// (The happy path does normalize CRLF -> LF, because the HTML formatter owns
+// that text; the two paths diverge here by design, not by oversight.)
 function normalizeFinalNewline(source: string): string {
   return source.trim() === "" ? "" : source.replace(/(?:\r?\n)+$/, "") + "\n"
 }
