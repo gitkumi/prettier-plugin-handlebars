@@ -62,7 +62,101 @@ function scanSpans(source: string): Span[] {
     spans.push(span)
     i = span.end
   }
-  return spans
+  return mergeAdjacentSpans(source, spans)
+}
+
+// Merge scanned spans so the HTML formatter sees one opaque token where it
+// would otherwise mangle a construct's verbatim shape. Two passes, each
+// emitting a single placeholder per merged run whose source bytes round-trip
+// exactly (so the transform stays idempotent):
+//
+//  1. Inline blocks. A balanced block (`{{#x}}` … `{{/x}}`) that fits on one
+//     source line with no tag boundary inside becomes one span, so an inline
+//     conditional-attribute block (`{{#if id}}id="{{id}}"{{/if}}`) is not seen
+//     as separate bare attributes and split across lines when the tag breaks.
+//     A block whose range contains `<`, `>`, or a newline is left alone, so
+//     markup inside a block (`{{#if x}}<a>…</a>{{/if}}`) and embedded JS/CSS
+//     between plain mustaches are still formatted normally.
+//  2. Whitespace runs. Constructs separated by nothing but whitespace are
+//     merged, so the author's line breaks between vertically stacked
+//     constructs (`{{#each}}` / `{{> x}}` / `{{/each}}`) survive instead of
+//     being collapsed like words.
+function mergeAdjacentSpans(source: string, spans: Span[]): Span[] {
+  return mergeWhitespaceRuns(source, mergeInlineBlocks(source, spans))
+}
+
+// Whether the construct at `start` opens (`{{#x}}`) or closes (`{{/x}}`) a
+// block. The strip marker is skipped the same way scanOne does it; after it,
+// `#` opens and `/` closes — every other construct (mustache, partial,
+// comment, `{{else}}`, raw block) opens nothing.
+function blockMarker(source: string, start: number): "open" | "close" | null {
+  const i = source.startsWith("{{~", start) ? start + 3 : start + 2
+  if (source[i] === "#") return "open"
+  if (source[i] === "/") return "close"
+  return null
+}
+
+// Whether [start, end) holds a tag boundary or newline — the signal that a
+// block's interior is markup the HTML formatter must still own. Scanned
+// directly (no substring) with an early exit, since most non-mergeable blocks
+// hit one of these characters near their start.
+function spansMarkup(source: string, start: number, end: number): boolean {
+  for (let p = start; p < end; p++) {
+    const c = source[p]
+    if (c === "<" || c === ">" || c === "\n") return true
+  }
+  return false
+}
+
+// Collapse each outermost balanced block that fits on one line with no tag
+// boundary inside into a single span. The template is already validated by
+// Handlebars.parse, so blocks are well nested and a stack pairs every closer
+// with its opener.
+function mergeInlineBlocks(source: string, spans: Span[]): Span[] {
+  const closerFor = new Map<number, number>()
+  const openStack: number[] = []
+  for (let k = 0; k < spans.length; k++) {
+    const marker = blockMarker(source, spans[k].start)
+    if (marker === "open") openStack.push(k)
+    else if (marker === "close") {
+      const open = openStack.pop()
+      if (open !== undefined) closerFor.set(open, k)
+    }
+  }
+
+  const merged: Span[] = []
+  let k = 0
+  while (k < spans.length) {
+    const close = closerFor.get(k)
+    if (close !== undefined) {
+      const start = spans[k].start
+      const end = spans[close].end
+      if (!spansMarkup(source, start, end)) {
+        merged.push({ start, end })
+        k = close + 1
+        continue
+      }
+    }
+    merged.push(spans[k])
+    k++
+  }
+  return merged
+}
+
+// Spans are never mutated: a merged run becomes a fresh span and unmerged
+// spans are passed through by reference, so the two passes can share span
+// objects safely.
+function mergeWhitespaceRuns(source: string, spans: Span[]): Span[] {
+  const merged: Span[] = []
+  for (const span of spans) {
+    const prev = merged[merged.length - 1]
+    if (prev && source.slice(prev.end, span.start).trim() === "") {
+      merged[merged.length - 1] = { start: prev.start, end: span.end }
+    } else {
+      merged.push(span)
+    }
+  }
+  return merged
 }
 
 function scanOne(source: string, start: number): Span {

@@ -11,9 +11,14 @@ const { hardline, trim } = doc.builders
 // handlebars expression, so each expression's own bytes (internal spacing,
 // whitespace-control markers, quirky-but-legal forms) round-trip exactly. The
 // text *around* expressions is not verbatim — it is HTML, formatted like any
-// other markup. In particular the HTML formatter collapses whitespace between
-// adjacent expressions just as it would between words (`{{a}}\n\n{{b}}` ->
-// `{{a}} {{b}}`). The placeholder protocol itself lives in ./placeholders.ts.
+// other markup. A run of constructs with no tag boundary between them is also
+// preserved verbatim: the parser merges such a run into one span (see
+// mergeAdjacentSpans in ./parser.ts), so the author's line breaks between
+// stacked constructs (`{{#each}}` / `{{> x}}` / `{{/each}}`) and inline
+// conditional-attribute blocks (`{{#if id}}id="{{id}}"{{/if}}`) survive
+// instead of the HTML formatter collapsing or splitting them. A gap that
+// contains a tag boundary is still the HTML formatter's to reflow. The
+// placeholder protocol itself lives in ./placeholders.ts.
 //
 // The parser never inspects HTML. When placeholdering leaves markup the HTML
 // parser can't accept (a tag opened in one block branch and closed in

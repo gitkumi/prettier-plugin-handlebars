@@ -113,9 +113,12 @@ describe("regressions", () => {
     await expect(format("   \n\t")).resolves.toBe("")
   })
 
-  it("keeps adjacent expression whitespace under the html formatter contract", async () => {
+  it("preserves whitespace between adjacent constructs verbatim", async () => {
+    // Constructs separated only by whitespace are merged into one span, so the
+    // author's spacing/line breaks round-trip exactly instead of the HTML
+    // formatter collapsing them like words.
     await expect(format("{{foo}}   \n\n   {{bar}}")).resolves.toBe(
-      "{{foo}} {{bar}}\n",
+      "{{foo}}   \n\n   {{bar}}\n",
     )
   })
 
